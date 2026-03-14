@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenCode Web 插件帮助</title>
+  <style>
+    body {
+      font-family: var(--vscode-font-family);
+      font-size: var(--vscode-font-size);
+      color: var(--vscode-foreground);
+      background-color: var(--vscode-editor-background);
+      padding: 20px;
+      line-height: 1.6;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    h1 {
+      color: var(--vscode-editor-foreground);
+      border-bottom: 1px solid var(--vscode-panel-border);
+      padding-bottom: 10px;
+    }
+    h2 {
+      color: var(--vscode-editor-foreground);
+      margin-top: 30px;
+    }
+    h3 {
+      color: var(--vscode-textLink-foreground);
+    }
+    .section {
+      margin-bottom: 30px;
+      padding: 20px;
+      background-color: var(--vscode-editor-background);
+      border-radius: 8px;
+      border: 1px solid var(--vscode-panel-border);
+    }
+    code {
+      background-color: var(--vscode-textCodeBlock-background);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: var(--vscode-editor-font-family);
+    }
+    pre {
+      background-color: var(--vscode-textCodeBlock-background);
+      padding: 15px;
+      border-radius: 5px;
+      overflow-x: auto;
+      border-left: 3px solid var(--vscode-textLink-foreground);
+    }
+    pre code {
+      background-color: transparent;
+      padding: 0;
+    }
+    a {
+      color: var(--vscode-textLink-foreground);
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    .warning {
+      background-color: var(--vscode-editorInfo-background);
+      border-left: 4px solid var(--vscode-editorInfo-foreground);
+      padding: 15px;
+      margin: 20px 0;
+    }
+    ul, ol {
+      margin: 10px 0;
+      padding-left: 20px;
+    }
+    li {
+      margin: 5px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>OpenCode 帮助文档</h1>
+
+  <div class="section">
+    <h2>什么是 OpenCode？</h2>
+    <p>OpenCode 是一个强大的 AI 编程助手，可以帮助你：</p>
+    <ul>
+      <li>快速编写和理解代码</li>
+      <li>自动生成代码片段</li>
+      <li>提供智能代码补全</li>
+      <li>解答编程问题</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>安装指南</h2>
+
+    <h3>系统要求</h3>
+    <ul>
+      <li>Node.js >= 16.0.0</li>
+      <li>npm 或 yarn</li>
+      <li>VSCode >= 1.70.0</li>
+    </ul>
+
+    <h3>安装步骤</h3>
+    <p>使用 npm 全局安装：</p>
+    <pre><code>npm install -g opencode-ai</code></pre>
+
+    <p>或使用 yarn：</p>
+    <pre><code>yarn global add opencode-ai</code></pre>
+
+    <h3>验证安装</h3>
+    <p>安装完成后, 重启一下 vscode, 运行以下命令验证：</p>
+    <pre><code>opencode --version</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>使用指南</h2>
+
+    <h3>启动 OpenCode</h3>
+    <ol>
+      <li>打开 VSCode 侧边栏的 OpenCode-Web 面板</li>
+      <li>点击"启动 OpenCode"按钮</li>
+      <li>等待服务启动完成</li>
+      <li>开始使用</li>
+    </ol>
+
+    <h3>发送代码到 OpenCode 终端</h3>
+    <ol>
+      <li>在编辑器中选中代码</li>
+      <li>右键点击选中的代码</li>
+      <li>选择"添加到 OpenCode 终端"</li>
+      <li>代码将自动发送到 OpenCode 终端</li>
+    </ol>
+
+    <div class="warning">
+      <strong>提示：</strong> 确保 OpenCode 服务正在运行，否则无法发送代码。
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>常见问题</h2>
+
+    <h3>Q: OpenCode 无法启动？</h3>
+    <p>A: 请检查端口 4099 是否被占用，或者尝试修改配置中的端口号。</p>
+
+    <h3>Q: 连接超时怎么办？</h3>
+    <p>A: 可尝试点击顶部栏的"重启进程"按钮，会杀掉opencode进程，重新启动</p>
+  </div>
+
+  <div class="section">
+    <h2>相关链接</h2>
+    <ul>
+      <li><a href="https://github.com/liangqiangWang/opencode-web-for-vscode">插件源码仓库</a></li>
+      <li><a href="https://opencode.dev/docs">官方文档</a></li>
+      <li><a href="https://github.com/liangqiangWang/opencode-web-for-vscode/issues">问题反馈</a></li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>技术支持</h2>
+    <p>如果遇到问题，请：</p>
+    <ol>
+      <li>查看帮助文档和常见问题</li>
+      <li>在 GitHub 上搜索已有问题</li>
+      <li>创建新的 Issue 描述你的问题</li>
+    </ol>
+  </div>
+</body>
+</html>
