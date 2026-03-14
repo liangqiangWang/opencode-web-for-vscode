@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 
 import { OpenCodeClient } from './OpenCodeClient';
@@ -23,6 +23,14 @@ import { getEventManager } from './EventManager';
 const execAsync = promisify(exec);
 
 /**
+ * 安装状态缓存
+ */
+interface InstallationCache {
+  isInstalled: boolean | null;
+  timestamp: number;
+}
+
+/**
  * OpenCode 核心管理器
  * 负责 opencode 进程的启动、连接和交互
  */
@@ -35,6 +43,13 @@ export class OpenCodeManager {
   private context: vscode.ExtensionContext;
   private opencodeProcess?: import('child_process').ChildProcess; // OpenCode 后台进程
   private terminal?: vscode.Terminal;
+
+  // 安装状态缓存
+  private installationCache: InstallationCache = {
+    isInstalled: null,
+    timestamp: 0
+  };
+  private readonly CACHE_DURATION = 5 * 60 * 1000; // 5分钟缓存
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -342,16 +357,114 @@ export class OpenCodeManager {
   }
 
   /**
-   * 检查 opencode 是否已安装
+   * 检查 opencode 是否已安装（增强版，使用双重检测）
+   * 1. 首先检查 PATH（快速）
+   * 2. 然后实际执行命令（可靠）
+   * 3. 使用缓存避免频繁检查
    */
   private async checkOpenCodeInstalled(): Promise<boolean> {
+    // 检查缓存
+    const now = Date.now();
+    if (this.installationCache.isInstalled !== null &&
+        (now - this.installationCache.timestamp) < this.CACHE_DURATION) {
+      this.log(`使用缓存的安装状态: ${this.installationCache.isInstalled}`);
+      return this.installationCache.isInstalled;
+    }
+
+    this.log('开始检查 OpenCode 安装状态...');
+
+    // 方法1: 检查命令是否在 PATH 中（快速）
+    let inPath = false;
     try {
       const command = isWindows() ? CHECK_COMMANDS.WINDOWS : CHECK_COMMANDS.UNIX;
-      await execAsync(command);
-      return true;
-    } catch {
-      return false;
+      await execAsync(command, { timeout: 2000 });
+      inPath = true;
+      this.log('OpenCode 命令在 PATH 中找到');
+    } catch (error) {
+      this.log(`OpenCode 命令不在 PATH 中: ${error}`);
     }
+
+    // 方法2: 实际执行命令验证（可靠，但需要超时保护）
+    let canExecute = false;
+    if (inPath) {
+      canExecute = await this.verifyOpenCodeExecutable();
+    }
+
+    const isInstalled = inPath && canExecute;
+
+    // 更新缓存
+    this.installationCache = {
+      isInstalled,
+      timestamp: now
+    };
+
+    this.log(`OpenCode 安装状态最终结果: ${isInstalled} (PATH: ${inPath}, 可执行: ${canExecute})`);
+
+    return isInstalled;
+  }
+
+  /**
+   * 验证 OpenCode 是否可以实际执行
+   * 通过执行 opencode --version 命令
+   */
+  private verifyOpenCodeExecutable(): Promise<boolean> {
+    return new Promise((resolve) => {
+      try {
+        this.log('验证 OpenCode 可执行性...');
+
+        const proc = spawn('opencode', ['--version'], {
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+
+        let timedOut = false;
+
+        // 设置超时（5秒）
+        const timer = setTimeout(() => {
+          timedOut = true;
+          proc.kill();
+          this.log('OpenCode 验证超时（5秒）');
+          resolve(false);
+        }, 5000);
+
+        proc.on('error', (error) => {
+          clearTimeout(timer);
+          this.log(`OpenCode 执行失败: ${error.message}`);
+          resolve(false);
+        });
+
+        proc.on('close', (code) => {
+          clearTimeout(timer);
+          if (!timedOut) {
+            const success = code === 0;
+            this.log(`OpenCode 验证结果: ${success ? '成功' : '失败'} (退出码: ${code})`);
+            resolve(success);
+          }
+        });
+
+      } catch (error) {
+        this.log(`OpenCode 验证异常: ${error}`);
+        resolve(false);
+      }
+    });
+  }
+
+  /**
+   * 清除安装状态缓存
+   * 用于强制重新检查安装状态
+   */
+  private clearInstallationCache(): void {
+    this.installationCache = {
+      isInstalled: null,
+      timestamp: 0
+    };
+    this.log('已清除安装状态缓存');
+  }
+
+  /**
+   * 日志输出（私有方法）
+   */
+  private log(message: string): void {
+    console.log(`[OpenCodeManager] ${message}`);
   }
 
   /**

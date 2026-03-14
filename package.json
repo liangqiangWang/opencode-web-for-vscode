@@ -2,7 +2,7 @@
   "name": "opencode-web-integration",
   "displayName": "OpenCode Web Integration",
   "description": "VSCode extension for OpenCode Web (unofficial)",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "hudi",
   "icon": "resources/icons/opencode.png",
   "license": "MIT",
@@ -35,7 +35,12 @@
         {
           "id": "opencodeWebview",
           "name": "OpenCode",
-          "type": "webview"
+          "type": "webview",
+          "icon": "resources/icons/opencode.svg",
+          "themeIcon": {
+            "light": "resources/icons/opencode-light.svg",
+            "dark": "resources/icons/opencode-dark.svg"
+          }
         }
       ]
     },
@@ -58,7 +63,7 @@
       {
         "command": "opencode-web.openTui",
         "title": "打开 OpenCode 终端",
-        "icon": "resources/icons/opencode.svg"
+        "icon": "$(circuit-board)"
       },
       {
         "command": "opencode-web.killProcess",
@@ -113,7 +118,12 @@
       "editor/title": [
         {
           "command": "opencode-web.openTui",
-          "group": "navigation"
+          "group": "navigation",
+          "icon": "resources/icons/opencode.svg",
+          "themeIcon": {
+            "light": "resources/icons/opencode-light.svg",
+            "dark": "resources/icons/opencode-dark.svg"
+          }
         }
       ],
       "opencode-web.moreMenu": [
