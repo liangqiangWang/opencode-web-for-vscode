@@ -30,21 +30,21 @@
 ### 启动 OpenCode
 
 1. 左侧栏使用 OpenCode Web
-<img src="./screenshot/side_view.png" width="600"/>
+<img src="https://raw.githubusercontent.com/liangqiangWang/opencode-web-for-vscode/master/screenshot/side_view.png" width="600"/>
 
 2. 在编辑器区域使用 OpenCode Web
 除了左侧栏，也可以在编辑器区域显示
-<img src="./screenshot/main_web_view.png" width="600"/>
+<img src="https://raw.githubusercontent.com/liangqiangWang/opencode-web-for-vscode/master/screenshot/main_web_view.png" width="600"/>
 
 ### 发送代码到 OpenCode TUI 输入框
 1. 在编辑器中选择代码
 2. 右键点击并选择 `添加到 OpenCode 终端`
 3. 选中的代码将连同文件上下文一起发送到 OpenCode
-<img src="./screenshot/send_data.png" width="600"/>
+<img src="https://raw.githubusercontent.com/liangqiangWang/opencode-web-for-vscode/master/screenshot/send_data.png" width="600"/>
 
 ### 进程管理
 
-<img src="./screenshot/menu_view.png" width="600"/>
+<img src="https://raw.githubusercontent.com/liangqiangWang/opencode-web-for-vscode/master/screenshot/menu_view.png" width="600"/>
 
 在侧边栏顶部工具栏：
 - **刷新连接**：刷新 OpenCode Web 页面
