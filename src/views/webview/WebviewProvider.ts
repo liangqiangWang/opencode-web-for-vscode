@@ -133,6 +133,21 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
    * 当 webview 可见时调用，会主动检查实际状态
    */
   private async restoreWebviewState(): Promise<void> {
+    // 首先检查 webviewView 的 HTML 是否为空
+    if (this.webviewView) {
+      const isHtmlEmpty = !this.webviewView.webview.html || this.webviewView.webview.html.trim() === '';
+
+      if (isHtmlEmpty) {
+        this.log('webviewView HTML 为空，重新生成 HTML');
+        const webview = this.webviewView.webview;
+        const url = this.getOpenCodeUrl();
+        webview.html = this.getWebviewContent(url);
+
+        // 等待 HTML 加载完成后再恢复状态
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+
     // 先检查 OpenCode 的实际状态
     try {
       const actualStatus = await this.openCodeManager.getStatus();
