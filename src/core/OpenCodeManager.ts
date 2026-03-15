@@ -12,7 +12,9 @@ import {
   CHECK_COMMANDS,
   INSTALL_COMMANDS,
   START_ARGS,
-  TERMINAL_NAME
+  TERMINAL_NAME,
+  BACKGROUND_TERMINAL_NAME,
+  WINDOWS_COMMANDS
 } from '../common/constants';
 import {
   OpenCodeTimeoutError,
@@ -41,8 +43,8 @@ export class OpenCodeManager {
   private configService: ConfigurationService;
   private eventManager = getEventManager();
   private context: vscode.ExtensionContext;
-  private opencodeProcess?: import('child_process').ChildProcess; // OpenCode 后台进程
-  private terminal?: vscode.Terminal;
+  private terminal?: vscode.Terminal;  // TUI 终端
+  private backgroundTerminal?: vscode.Terminal;  // 后台终端
 
   // 安装状态缓存
   private installationCache: InstallationCache = {
@@ -57,6 +59,27 @@ export class OpenCodeManager {
     this.config = this.loadConfig();
     this.baseUrl = `http://localhost:${this.config.defaultPort}`;
     this.client = new OpenCodeClient(this.config.defaultPort, this.config);
+
+    // 监听终端关闭事件
+    const closeDisposable = vscode.window.onDidCloseTerminal((terminal) => {
+      if (terminal.name === BACKGROUND_TERMINAL_NAME) {
+        this.log('Background terminal closed');
+        this.backgroundTerminal = undefined;
+
+        // 触发状态变化事件
+        this.eventManager.emitProcessStateChanged({
+          status: OpenCodeStatus.NotRunning,
+          timestamp: Date.now()
+        });
+
+        this.eventManager.emitConnectionChanged({
+          connected: false,
+          timestamp: Date.now()
+        });
+      }
+    });
+
+    context.subscriptions.push(closeDisposable);
   }
 
   /**
@@ -138,79 +161,49 @@ export class OpenCodeManager {
     const workspacePath = this.getWorkspacePath();
     if (!workspacePath) {
       const message = '请先打开一个工作区（文件夹）后再启动 OpenCode';
-      console.log(`无法启动 OpenCode: ${message}`);
-      // 不再显示 toast，由调用方（WebviewProvider）在页面上显示提示
+      this.log(`无法启动 OpenCode: ${message}`);
       this.eventManager.emitProcessError(message);
       return false;
     }
 
     try {
-      // 检查是否已经在运行
-      const isRunning = await this.checkConnection();
-      if (isRunning) {
-        console.log('OpenCode 已经在运行，无需重复启动');
-        return true;
-      }
+      // 检查后台终端是否已存在
+      const existingBackground = vscode.window.terminals.find(
+        terminal => terminal.name === BACKGROUND_TERMINAL_NAME
+      );
 
-      // 使用 child_process.spawn 直接启动后台进程
-      const { spawn } = require('child_process');
-
-      const args = [
-        START_ARGS.PORT,
-        String(this.config.defaultPort)
-      ];
-
-      console.log(`启动 OpenCode: opencode ${args.join(' ')}`);
-
-      // 在后台启动 OpenCode 进程
-      const childProc = spawn('opencode', args, {
-        cwd: workspacePath,
-        detached: true,  // 让进程独立于父进程运行
-        stdio: ['ignore', 'pipe', 'pipe'],  // 重定向输出
-        env: {
-          ...process.env,  // 注意：这里的 process 是 Node.js 全局对象
-          OPENCODE_CALLER: 'vscode'
+      if (existingBackground) {
+        // 终端存在，检查进程是否还在运行
+        const isRunning = await this.checkConnection();
+        if (isRunning) {
+          this.log('Background terminal already exists and process is running');
+          this.backgroundTerminal = existingBackground;
+          return true;
+        } else {
+          // 终端存在但进程已死，清理并重新创建
+          this.log('Existing terminal found but process is not running, disposing it');
+          existingBackground.dispose();
         }
-      });
-
-      // 保存进程引用，用于后续管理
-      this.opencodeProcess = childProc;
-
-      // 监听进程输出（用于调试）
-      if (childProc.stdout) {
-        childProc.stdout.on('data', (data: Buffer) => {
-          console.log(`[OpenCode] ${data.toString().trim()}`);
-        });
       }
 
-      if (childProc.stderr) {
-        childProc.stderr.on('data', (data: Buffer) => {
-          console.error(`[OpenCode Error] ${data.toString().trim()}`);
-        });
-      }
+      // 创建后台终端
+      const terminal = this.createBackgroundTerminal(workspacePath);
 
-      // 监听进程退出
-      childProc.on('exit', (code: number, signal: string) => {
-        console.log(`OpenCode 进程退出，代码: ${code}, 信号: ${signal}`);
-        this.eventManager.emitProcessStateChanged({
-          status: OpenCodeStatus.NotRunning,
-          timestamp: Date.now()
-        });
-      });
+      // 构建启动命令
+      const command = isWindows()
+        ? `opencode.cmd ${START_ARGS.PORT} ${this.config.defaultPort}`
+        : `opencode ${START_ARGS.PORT} ${this.config.defaultPort}`;
 
-      childProc.on('error', (error: Error) => {
-        console.error(`OpenCode 进程错误: ${error}`);
-        this.eventManager.emitProcessError(`进程错误: ${error.message}`);
-      });
+      this.log(`启动 OpenCode: ${command}`);
 
-      // 因为使用了 detached: true，让子进程独立运行
-      childProc.unref();
+      // 发送命令到终端（终端在后台执行，不显示）
+      terminal.sendText(command);
 
-      // 等待服务就绪
+      // 等待服务就绪（HTTP 健康检查）
       const isReady = await this.waitForReady();
 
       if (!isReady) {
-        console.log('OpenCode 启动超时');
+        this.log('OpenCode 启动超时');
         this.eventManager.emitProcessError('启动超时');
         return false;
       }
@@ -222,12 +215,12 @@ export class OpenCodeManager {
       const finalCheck = await this.checkConnection();
 
       if (!finalCheck) {
-        console.log('OpenCode 连接检查失败');
+        this.log('OpenCode 连接检查失败');
         this.eventManager.emitProcessError('连接检查失败');
         return false;
       }
 
-      console.log('OpenCode 后台启动成功');
+      this.log('OpenCode 后台启动成功');
 
       // 触发进程状态变化事件
       this.eventManager.emitProcessStateChanged({
@@ -243,7 +236,7 @@ export class OpenCodeManager {
 
       return true;
     } catch (error) {
-      console.log(`OpenCode 后台启动失败: ${error}`);
+      this.log(`OpenCode 后台启动失败: ${error}`);
       this.eventManager.emitProcessError(`启动失败: ${error}`);
       return false;
     }
@@ -376,10 +369,16 @@ export class OpenCodeManager {
     // 方法1: 检查命令是否在 PATH 中（快速）
     let inPath = false;
     try {
-      const command = isWindows() ? CHECK_COMMANDS.WINDOWS : CHECK_COMMANDS.UNIX;
-      await execAsync(command, { timeout: 2000 });
-      inPath = true;
-      this.log('OpenCode 命令在 PATH 中找到');
+      if (isWindows()) {
+        // Windows: 使用增强检测
+        inPath = await this.checkWindowsInstallation();
+      } else {
+        // Unix: 保持现有逻辑
+        const command = CHECK_COMMANDS.UNIX;
+        await execAsync(command, { timeout: 2000 });
+        inPath = true;
+        this.log('OpenCode 命令在 PATH 中找到');
+      }
     } catch (error) {
       this.log(`OpenCode 命令不在 PATH 中: ${error}`);
     }
@@ -404,45 +403,140 @@ export class OpenCodeManager {
   }
 
   /**
+   * Windows 专用安装检测（多层检测，跨 shell 兼容）
+   * 针对 nvm 和标准 npm 安装进行优化
+   * 支持 PowerShell、cmd、Git Bash、WSL 等多种 shell
+   */
+  private async checkWindowsInstallation(): Promise<boolean> {
+    this.log('开始 Windows 安装检查（跨 shell 兼容）');
+
+    // 方法1a: 尝试 where 命令（PowerShell/cmd）
+    try {
+      const { stdout } = await execAsync('where opencode', { timeout: 2000 });
+      this.log(`✅ [方法1a] 通过 where 找到: ${stdout.trim()}`);
+      return true;
+    } catch (error: any) {
+      this.log(`❌ [方法1a] where 失败`);
+    }
+
+    // 方法1b: 尝试 which 命令（Git Bash/WSL）
+    try {
+      const { stdout } = await execAsync('which opencode', { timeout: 2000, shell: true as any });
+      this.log(`✅ [方法1b] 通过 which 找到: ${stdout.trim()}`);
+      return true;
+    } catch (error: any) {
+      this.log(`❌ [方法1b] which 失败`);
+    }
+
+    // 方法2: 检查 npm 全局包（兼容 nvm）
+    try {
+      const { stdout } = await execAsync(WINDOWS_COMMANDS.NPM_CHECK_GLOBAL, {
+        timeout: 3000,
+        shell: true as any
+      });
+
+      if (stdout.includes('opencode-ai')) {
+        this.log(`✅ [方法2] 通过 npm 全局包找到`);
+        return true;
+      }
+    } catch (error: any) {
+      this.log(`❌ [方法2] npm 检查失败`);
+    }
+
+    // 方法3: 直接检查 npm bin 路径（最可靠）
+    try {
+      const { stdout: npmBinPath } = await execAsync(WINDOWS_COMMANDS.NPM_GET_PREFIX, {
+        timeout: 2000,
+        shell: true as any
+      });
+
+      const path = require('path');
+      const fs = require('fs');
+
+      const possiblePaths = [
+        path.join(npmBinPath.trim(), 'opencode.cmd'),
+        path.join(npmBinPath.trim(), 'opencode'),
+        path.join(npmBinPath.trim(), 'node_modules', '.bin', 'opencode.cmd'),
+      ];
+
+      for (const exePath of possiblePaths) {
+        if (fs.existsSync(exePath)) {
+          this.log(`✅ [方法3] 通过文件路径找到: ${exePath}`);
+          return true;
+        }
+      }
+    } catch (error: any) {
+      this.log(`❌ [方法3] npm 路径检查失败`);
+    }
+
+    this.log('❌ Windows 安装检查: 未找到');
+    return false;
+  }
+
+  /**
    * 验证 OpenCode 是否可以实际执行
    * 通过执行 opencode --version 命令
    */
   private verifyOpenCodeExecutable(): Promise<boolean> {
     return new Promise((resolve) => {
       try {
-        this.log('验证 OpenCode 可执行性...');
+        this.log('验证 OpenCode 可执行性');
 
-        const proc = spawn('opencode', ['--version'], {
+        const spawnOptions: any = {
           stdio: ['ignore', 'pipe', 'pipe'],
-        });
+          windowsHide: true,
+        };
+
+        // Windows: 需要 shell: true 来执行 .cmd 文件
+        if (isWindows()) {
+          spawnOptions.shell = true;
+        }
+
+        const command = isWindows() ? 'opencode.cmd' : 'opencode';
+        const proc = spawn(command, ['--version'], spawnOptions);
 
         let timedOut = false;
+        let output = '';
+        let errorOutput = '';
 
         // 设置超时（5秒）
         const timer = setTimeout(() => {
           timedOut = true;
           proc.kill();
-          this.log('OpenCode 验证超时（5秒）');
+          this.log('❌ 验证超时（5秒）');
           resolve(false);
         }, 5000);
 
-        proc.on('error', (error) => {
+        // 捕获输出
+        if (proc.stdout) {
+          proc.stdout.on('data', (data: Buffer) => {
+            output += data.toString();
+          });
+        }
+
+        if (proc.stderr) {
+          proc.stderr.on('data', (data: Buffer) => {
+            errorOutput += data.toString();
+          });
+        }
+
+        proc.on('error', (error: Error) => {
           clearTimeout(timer);
-          this.log(`OpenCode 执行失败: ${error.message}`);
+          this.log(`❌ 验证失败: ${error.message}`);
           resolve(false);
         });
 
-        proc.on('close', (code) => {
+        proc.on('close', (code: number | null) => {
           clearTimeout(timer);
           if (!timedOut) {
             const success = code === 0;
-            this.log(`OpenCode 验证结果: ${success ? '成功' : '失败'} (退出码: ${code})`);
+            this.log(`${success ? '✅' : '❌'} 验证结果: ${success ? '成功' : '失败'} (退出码: ${code})`);
             resolve(success);
           }
         });
 
-      } catch (error) {
-        this.log(`OpenCode 验证异常: ${error}`);
+      } catch (error: any) {
+        this.log(`❌ 验证异常: ${error.message}`);
         resolve(false);
       }
     });
@@ -457,7 +551,6 @@ export class OpenCodeManager {
       isInstalled: null,
       timestamp: 0
     };
-    this.log('已清除安装状态缓存');
   }
 
   /**
@@ -697,39 +790,167 @@ export class OpenCodeManager {
   }
 
   /**
+   * 创建后台终端（不显示给用户）
+   * 用于启动和管理 OpenCode 主进程
+   */
+  private createBackgroundTerminal(workspacePath: string): vscode.Terminal {
+    const terminal = vscode.window.createTerminal({
+      name: BACKGROUND_TERMINAL_NAME,
+      cwd: workspacePath,
+      // 不指定 location → 终端隐藏
+      iconPath: vscode.Uri.joinPath(
+        this.context.extensionUri,
+        'resources',
+        'icons',
+        'opencode.svg'
+      ),
+      env: {
+        OPENCODE_CALLER: 'vscode',
+      },
+    });
+
+    this.backgroundTerminal = terminal;
+    this.log('Background terminal created');
+    return terminal;
+  }
+
+  /**
+   * 跨平台终止占用指定端口的进程
+   * 支持多种 shell：PowerShell、cmd、Git Bash、WSL
+   * @param port 端口号
+   * @returns 是否成功终止
+   */
+  private async killProcessByPortCrossPlatform(port: number): Promise<boolean> {
+    if (!isWindows()) {
+      // Unix/macOS: 使用 lsof
+      try {
+        const command = `lsof -ti:${port} | xargs kill -9`;
+        await execAsync(command, { timeout: 5000 });
+        this.log('[Unix] ✅ 进程已终止');
+        return true;
+      } catch (error) {
+        this.log('[Unix] ⚠️ 进程终止失败');
+        return false;
+      }
+    }
+
+    // Windows: 尝试多种方法（兼容不同 shell）
+    const methods = [
+      {
+        name: 'taskkill (cmd)',
+        command: `for /f "tokens=5" %a in ('netstat -aon ^| findstr :${port}') do taskkill /F /PID %a`,
+        shell: false
+      },
+      {
+        name: 'taskkill (PowerShell)',
+        command: `powershell -Command "$pids = (Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue).OwningProcess; if ($pids) { Stop-Process -Id $pids -Force -ErrorAction SilentlyContinue }"`,
+        shell: true as any
+      },
+      {
+        name: 'bash/netstat',
+        command: `pid=$(netstat -aon | findstr :${port} | awk '{print $5}' | head -1 | cut -d: -f2); if [ -n "$pid" ]; then taskkill //F //PID $pid 2>/dev/null; fi`,
+        shell: true as any
+      }
+    ];
+
+    for (const method of methods) {
+      try {
+        await execAsync(method.command, { timeout: 5000, shell: method.shell });
+        this.log(`✅ 通过 ${method.name} 终止进程`);
+        return true;
+      } catch (error: any) {
+        // 静默失败，尝试下一个方法
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * 清理资源（扩展停用时调用）
+   */
+  public async cleanup(): Promise<void> {
+    const terminal = this.backgroundTerminal;
+
+    if (terminal) {
+      this.log('清理后台终端（扩展停用）');
+
+      // 发送 Ctrl+C + exit 让终端主动退出
+      try {
+        terminal.sendText('\x03');
+        terminal.sendText('exit');
+      } catch (error) {
+        this.log(`⚠️ 发送命令失败: ${error}`);
+      }
+
+      // 等待进程和终端优雅退出
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // 销毁终端引用
+      try {
+        terminal.sendText('exit');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        terminal.dispose();
+        this.log('✅ 后台终端已清理');
+      } catch (error) {
+        this.log(`⚠️ 清理终端失败: ${error}`);
+      }
+      this.backgroundTerminal = undefined;
+
+      // 使用系统命令确保进程被终止
+      const port = this.config.defaultPort;
+      await this.killProcessByPortCrossPlatform(port);
+
+      this.log('✅ 清理完成');
+    }
+  }
+
+  /**
    * 杀掉 OpenCode 进程
    * @param emitEvent 是否触发事件（默认为 true）
    */
   async killProcess(emitEvent: boolean = true): Promise<void> {
+    this.log('开始终止 OpenCode 进程');
+
     try {
+      // 保存终端引用到本地变量，避免被 onDidCloseTerminal 事件影响
+      const terminal = this.backgroundTerminal;
+
+      if (terminal) {
+        // 方式1：发送 Ctrl+C + exit 到终端（优雅关闭）
+        try {
+          terminal.sendText('\x03');  // Ctrl+C
+          terminal.sendText('exit');
+        } catch (error) {
+          this.log(`⚠️ 发送命令失败: ${error}`);
+        }
+
+        // 等待进程和终端优雅退出
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // 方式2：清理终端引用
+        try {
+          terminal.sendText('exit');
+          await new Promise(resolve => setTimeout(resolve, 500));
+          terminal.dispose();
+          this.log('✅ 后台终端已销毁');
+        } catch (error) {
+          this.log(`⚠️ 销毁终端失败: ${error}`);
+        }
+        this.backgroundTerminal = undefined;
+      }
+
+      // 方式3：使用系统命令确保进程被终止（跨 shell 兼容）
       const port = this.config.defaultPort;
-      const command = isWindows()
-        ? `netstat -ano | findstr :${port} | awk '{print $5}' | xargs taskkill /F /PID`
-        : `lsof -ti:${port} | xargs kill -9`;
-
-      await execAsync(command);
-
-      // 根据参数决定是否触发事件
-      if (emitEvent) {
-        // 触发进程状态变化事件
-        this.eventManager.emitProcessStateChanged({
-          status: OpenCodeStatus.NotRunning,
-          timestamp: Date.now()
-        });
-
-        // 触发连接状态变化事件
-        this.eventManager.emitConnectionChanged({
-          connected: false,
-          timestamp: Date.now()
-        });
+      const killed = await this.killProcessByPortCrossPlatform(port);
+      if (!killed) {
+        this.log('⚠️ 系统命令失败（可能进程已不存在）');
       }
 
-      // 事件系统会自动通知 UI，不再需要显式通知
-    } catch (error) {
-      // 根据参数决定是否触发事件
+      this.log('✅ 进程终止完成');
+
+      // 触发事件
       if (emitEvent) {
-        // 如果进程不存在，这实际上是期望的结果
-        // 仍然触发状态变化事件以确保 UI 同步
         this.eventManager.emitProcessStateChanged({
           status: OpenCodeStatus.NotRunning,
           timestamp: Date.now()
@@ -740,8 +961,21 @@ export class OpenCodeManager {
           timestamp: Date.now()
         });
       }
+    } catch (error: any) {
+      this.log(`❌ 进程终止错误: ${error.message}`);
 
-      // 事件系统会自动通知 UI，不再需要显式通知
+      // 即使出错也触发事件（进程可能已经不存在）
+      if (emitEvent) {
+        this.eventManager.emitProcessStateChanged({
+          status: OpenCodeStatus.NotRunning,
+          timestamp: Date.now()
+        });
+
+        this.eventManager.emitConnectionChanged({
+          connected: false,
+          timestamp: Date.now()
+        });
+      }
     }
   }
 

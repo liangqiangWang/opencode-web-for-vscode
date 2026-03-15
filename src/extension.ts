@@ -5,6 +5,9 @@ import { registerWebviewCommands } from './commands/webviewCommands';
 import { OpencodeWebviewProvider } from './views/webview/WebviewProvider';
 import { ConfigurationService } from './services/configuration';
 
+// 保存 OpenCodeManager 实例引用，用于 deactivate 清理
+let openCodeManager: OpenCodeManager;
+
 /**
  * 插件激活函数
  */
@@ -27,6 +30,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // 创建核心管理器
   const manager = new OpenCodeManager(context);
+  openCodeManager = manager;  // 保存引用
 
   // 创建 webview provider
   const webviewProvider = new OpencodeWebviewProvider(
@@ -65,6 +69,11 @@ export function activate(context: vscode.ExtensionContext) {
 /**
  * 插件停用函数
  */
-export function deactivate() {
+export async function deactivate() {
   console.log('OpenCode Integration extension is now deactivated!');
+
+  // 清理后台终端
+  if (openCodeManager) {
+    await openCodeManager.cleanup();
+  }
 }

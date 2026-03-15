@@ -79,6 +79,12 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
         this.setState('ready', '');
         break;
       case OpenCodeStatus.NotRunning:
+        // 如果正在启动或重启，不要覆盖启动状态
+        if (this.isStarting || this.isRestarting) {
+          this.log('正在启动/重启中，忽略 NotRunning 事件');
+          this.isConnected = false;
+          return;
+        }
         this.isStarting = false;
         this.isRestarting = false;
         this.isConnected = false;
@@ -113,6 +119,11 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
     if (data.connected) {
       this.setState('ready', '');
     } else {
+      // 如果正在启动或重启，不要覆盖启动状态
+      if (this.isStarting || this.isRestarting) {
+        this.log('正在启动/重启中，忽略连接断开事件');
+        return;
+      }
       this.setState('error', 'OpenCode 未启动');
     }
   }
@@ -392,6 +403,9 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
         this.setState('error', '请先打开一个工作区（文件夹）后再启动 OpenCode');
         return;
       }
+
+      // 立即显示启动中状态
+      this.setState('loading', '正在启动 OpenCode...');
 
       // 在后台启动
       const success = await this.openCodeManager.startInBackground();
@@ -970,6 +984,31 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
       undefined,
       this.context.subscriptions
     );
+
+    // 监听 webviewPanel 视图状态变化
+    this.webviewPanel.onDidChangeViewState(async () => {
+      const isActive = this.webviewPanel?.active;
+      const isVisible = this.webviewPanel?.visible;
+      this.log(`WebviewPanel 视图状态变化: active=${isActive}, visible=${isVisible}`);
+
+      // 当 webviewPanel 失去焦点或隐藏时，重新检查左侧栏 webview 的状态
+      if ((!isActive || !isVisible) && this.webviewView) {
+        this.log('WebviewPanel 失去焦点，恢复左侧栏 webview 状态');
+        await this.restoreWebviewState();
+      }
+    });
+
+    // 监听 webviewPanel 关闭事件
+    this.webviewPanel.onDidDispose(async () => {
+      this.log('WebviewPanel 已关闭');
+      this.webviewPanel = undefined;
+
+      // 重新恢复左侧栏 webview 的状态
+      if (this.webviewView) {
+        this.log('恢复左侧栏 webview 状态');
+        await this.restoreWebviewState();
+      }
+    });
 
     this.updateWebviewPanel();
     this.log('Webview 面板已在编辑器右侧创建');
