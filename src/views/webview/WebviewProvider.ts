@@ -232,7 +232,7 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
     // 监听 webview 可见性变化，添加防抖逻辑
     webviewView.onDidChangeVisibility(() => {
       this.log(`Webview 可见性变化: ${webviewView.visible}`);
-      if (webviewView.visible && this.isInitialized) {
+      if (webviewView.visible) {
         // 清除之前的定时器
         if (this.visibilityChangeTimer) {
           clearTimeout(this.visibilityChangeTimer);
@@ -241,7 +241,16 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
         // 添加 300ms 防抖，避免快速切换时频繁更新
         this.visibilityChangeTimer = setTimeout(async () => {
           this.log('防抖延迟结束，恢复 webview 状态');
-          await this.restoreWebviewState();
+          if (this.isInitialized) {
+            // 已初始化，直接恢复状态
+            await this.restoreWebviewState();
+          } else {
+            // 未初始化，触发初始化
+            this.log('Webview 可见但未初始化，触发初始化');
+            // 等待一小段时间确保 webview 完全加载
+            await new Promise(resolve => setTimeout(resolve, 100));
+            await this.restoreWebviewState();
+          }
         }, 300);
       }
     });
@@ -344,6 +353,10 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
     this.initializationLock = (async () => {
       try {
         this.log(`开始初始化 OpenCode (版本 ${currentVersion})...`);
+
+        // 等待 webview JavaScript 完全加载
+        // 防止消息在 webview 准备好之前发送
+        await new Promise(resolve => setTimeout(resolve, 200));
 
         // 设置初始化标志，防止重复初始化
         this.isInitialized = true;
