@@ -86,6 +86,19 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
    * 处理进程状态变化事件
    */
   private handleProcessStateChange(data: ProcessStateChangeEvent): void {
+    // 在重启或启动过程中，忽略 NotRunning 事件
+    // 因为这是中间状态，不应该覆盖当前状态
+    if (data.status === OpenCodeStatus.NotRunning) {
+      if (this.currentState === 'restarting') {
+        this.log('重启过程中忽略 NotRunning 事件');
+        return;
+      }
+      if (this.currentState === 'initializing') {
+        this.log('启动过程中忽略 NotRunning 事件');
+        return;
+      }
+    }
+
     const newState = this.mapOpenCodeStatusToWebviewState(data.status);
     if (newState) {
       this.currentState = newState;
@@ -372,17 +385,41 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
         return;
       }
 
-      // 在后台启动（不使用定时器，完全依赖事件系统）
+      // 在后台启动
       const success = await this.openCodeManager.startInBackground();
 
       if (success) {
         this.log('OpenCode 启动成功，等待进程事件...');
         this.setState('loading', l10n.t('status.waiting'));
-        // 不使用定时器检查，让事件系统处理状态更新
+        // 事件系统会处理后续状态更新
       } else {
-        this.log('OpenCode 启动失败');
-        this.currentState = 'error';
-        this.setState('error', l10n.t('message.startFailed'));
+        // 启动失败，但可能是超时导致的，等待几秒后再次检查状态
+        this.log('OpenCode 启动返回失败，等待进程可能仍在启动...');
+        this.setState('loading', l10n.t('status.waiting'));
+
+        // 等待 5 秒后再次检查状态
+        setTimeout(async () => {
+          const status = await this.openCodeManager.getStatus();
+          this.log(`延迟检查状态: ${status}`);
+
+          if (status === OpenCodeStatus.Running) {
+            this.currentState = 'ready';
+            this.setState('ready', '');
+          } else if (status === OpenCodeStatus.NotRunning) {
+            // 再检查一次连接，可能只是健康检查超时
+            const connected = await this.openCodeManager.checkConnection(3000);
+            if (connected) {
+              this.currentState = 'ready';
+              this.setState('ready', '');
+            } else {
+              this.currentState = 'error';
+              this.setState('error', l10n.t('message.startTimeout'));
+            }
+          } else {
+            this.currentState = 'error';
+            this.setState('error', l10n.t('message.startFailed'));
+          }
+        }, 5000);
       }
     } catch (error) {
       this.log(`启动失败: ${error}`);

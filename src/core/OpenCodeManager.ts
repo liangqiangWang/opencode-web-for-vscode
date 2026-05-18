@@ -201,7 +201,8 @@ export class OpenCodeManager {
       terminal.sendText(command);
 
       // 等待服务就绪（HTTP 健康检查）
-      const isReady = await this.waitForReady();
+      // 启动时使用更长的超时时间（15 秒），因为进程启动可能较慢
+      const isReady = await this.waitForReadyExtended(15000);
 
       if (!isReady) {
         this.log('OpenCode 启动超时');
@@ -214,7 +215,7 @@ export class OpenCodeManager {
       }
 
       // 等待启动完成
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
       // 最终检查一次连接
       const finalCheck = await this.checkConnection();
@@ -252,6 +253,29 @@ export class OpenCodeManager {
       this.eventManager.emitProcessError(l10n.t('message.startFailed', String(error)));
       return false;
     }
+  }
+
+  /**
+   * 等待 opencode 就绪（扩展版，支持自定义超时）
+   */
+  private async waitForReadyExtended(timeoutMs: number): Promise<boolean> {
+    const maxRetries = Math.ceil(timeoutMs / this.config.retryInterval);
+    const retryInterval = this.config.retryInterval;
+
+    this.log(`等待 OpenCode 就绪（最长 ${timeoutMs}ms，重试间隔 ${retryInterval}ms）`);
+
+    for (let i = 0; i < maxRetries; i++) {
+      const isReady = await this.client.checkAppReady();
+      if (isReady) {
+        this.log(`OpenCode 就绪（第 ${i + 1} 次检查）`);
+        return true;
+      }
+      // 等待一段时间后重试
+      await new Promise(resolve => setTimeout(resolve, retryInterval));
+    }
+
+    this.log(`OpenCode 未在 ${timeoutMs}ms 内就绪`);
+    return false;
   }
 
   /**
