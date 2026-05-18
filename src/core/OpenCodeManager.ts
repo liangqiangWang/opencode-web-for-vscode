@@ -206,6 +206,10 @@ export class OpenCodeManager {
       if (!isReady) {
         this.log('OpenCode 启动超时');
         this.eventManager.emitProcessError(l10n.t('message.startTimeout'));
+
+        // 检查进程是否崩溃
+        await this.checkProcessHealth();
+
         return false;
       }
 
@@ -217,11 +221,18 @@ export class OpenCodeManager {
 
       if (!finalCheck) {
         this.log('OpenCode 连接检查失败');
+
+        // 检查进程是否崩溃
+        await this.checkProcessHealth();
+
         this.eventManager.emitProcessError(l10n.t('message.startFailed'));
         return false;
       }
 
       this.log('OpenCode 后台启动成功');
+
+      // 启动进程监控
+      this.startProcessMonitoring();
 
       // 触发进程状态变化事件
       this.eventManager.emitProcessStateChanged({
@@ -238,8 +249,145 @@ export class OpenCodeManager {
       return true;
     } catch (error) {
       this.log(`OpenCode 后台启动失败: ${error}`);
-      this.eventManager.emitProcessError(l10n.t('message.startFailed', error));
+      this.eventManager.emitProcessError(l10n.t('message.startFailed', String(error)));
       return false;
+    }
+  }
+
+  /**
+   * 检查进程健康状态
+   * 用于诊断进程是否崩溃或异常
+   */
+  private async checkProcessHealth(): Promise<void> {
+    this.log('========== 检查进程健康状态 ==========');
+
+    try {
+      const { exec } = require('child_process');
+      const { promisify } = require('util');
+      const execAsync = promisify(exec);
+
+      // 检查端口占用
+      const port = this.config.defaultPort;
+
+      if (process.platform === 'win32') {
+        // Windows: 使用 netstat
+        try {
+          const { stdout } = await execAsync(`netstat -aon | findstr :${port}`, { timeout: 2000 });
+          if (stdout.trim()) {
+            this.log(`端口 ${port} 被占用:\n${stdout}`);
+          } else {
+            this.log(`端口 ${port} 未被占用`);
+          }
+        } catch (error) {
+          this.log(`端口 ${port} 未被占用`);
+        }
+      } else {
+        // Unix/macOS: 使用 lsof
+        try {
+          const { stdout } = await execAsync(`lsof -i :${port}`, { timeout: 2000 });
+          if (stdout.trim()) {
+            this.log(`端口 ${port} 被占用:\n${stdout}`);
+
+            // 尝试获取进程详情
+            const lines = stdout.trim().split('\n');
+            if (lines.length > 0) {
+              const firstLine = lines[0];
+              const parts = firstLine.trim().split(/\s+/);
+              if (parts.length >= 2) {
+                const pid = parts[1];
+                this.log(`进程 PID: ${pid}`);
+
+                // 检查进程是否还在运行
+                try {
+                  const { stdout: psOutput } = await execAsync(`ps -p ${pid} -o comm=`, { timeout: 2000 });
+                  this.log(`进程命令: ${psOutput.trim()}`);
+                } catch (psError) {
+                  this.log(`进程 ${pid} 不存在或已退出`);
+                }
+              }
+            }
+          } else {
+            this.log(`端口 ${port} 未被占用`);
+          }
+        } catch (error) {
+          this.log(`端口 ${port} 未被占用`);
+        }
+      }
+
+      // 检查后台终端状态
+      if (this.backgroundTerminal) {
+        this.log('后台终端存在');
+      } else {
+        this.log('后台终端不存在');
+      }
+
+    } catch (error) {
+      this.log(`进程健康检查失败: ${error}`);
+    }
+
+    this.log('========== 进程健康检查完成 ==========');
+  }
+
+  /**
+   * 启动进程监控
+   * 定期检查进程是否正常运行，如果崩溃则自动重启
+   */
+  private processMonitorTimer?: NodeJS.Timeout;
+
+  private startProcessMonitoring(): void {
+    // 清除之前的监控
+    if (this.processMonitorTimer) {
+      clearInterval(this.processMonitorTimer);
+    }
+
+    // 每 10 秒检查一次进程健康状态
+    this.processMonitorTimer = setInterval(async () => {
+      try {
+        const isHealthy = await this.checkConnection(2000); // 使用较短的超时
+
+        if (!isHealthy && this.backgroundTerminal) {
+          this.log('⚠️ 进程健康检查失败，可能已崩溃');
+
+          // 检查终端是否还存在
+          const terminalExists = vscode.window.terminals.some(
+            t => t.name === BACKGROUND_TERMINAL_NAME
+          );
+
+          if (!terminalExists) {
+            this.log('后台终端已关闭，进程可能已崩溃');
+            this.backgroundTerminal = undefined;
+
+            // 触发进程状态变化事件
+            this.eventManager.emitProcessStateChanged({
+              status: OpenCodeStatus.NotRunning,
+              timestamp: Date.now()
+            });
+
+            this.eventManager.emitConnectionChanged({
+              connected: false,
+              timestamp: Date.now()
+            });
+
+            // 停止监控
+            this.stopProcessMonitoring();
+          }
+        }
+      } catch (error) {
+        this.log(`进程监控检查失败: ${error}`);
+      }
+    }, 10000);
+
+    this.log('已启动进程监控（每 10 秒）');
+  }
+
+  /**
+   * 停止进程监控
+   */
+  private stopProcessMonitoring(): void {
+    if (this.processMonitorTimer) {
+      clearInterval(this.processMonitorTimer);
+      this.processMonitorTimer = undefined;
+      this.log('已停止进程监控');
     }
   }
 
@@ -822,15 +970,42 @@ export class OpenCodeManager {
    * @returns 是否成功终止
    */
   private async killProcessByPortCrossPlatform(port: number): Promise<boolean> {
+    this.log(`========== 开始终止端口 ${port} 的进程 ==========`);
+
     if (!isWindows()) {
       // Unix/macOS: 使用 lsof
       try {
+        // 首先获取进程列表用于日志
+        try {
+          const listCommand = `lsof -i :${port}`;
+          const { stdout } = await execAsync(listCommand, { timeout: 2000 });
+          this.log(`[Unix] 端口 ${port} 占用情况:\n${stdout}`);
+        } catch (listError) {
+          this.log(`[Unix] 端口 ${port} 未被占用`);
+        }
+
+        // 终止进程
         const command = `lsof -ti:${port} | xargs kill -9`;
-        await execAsync(command, { timeout: 5000 });
-        this.log('[Unix] ✅ 进程已终止');
-        return true;
+        const { stdout } = await execAsync(command, { timeout: 5000 });
+
+        if (stdout.trim()) {
+          this.log(`[Unix] ✅ 已终止进程 PID: ${stdout.trim()}`);
+        } else {
+          this.log(`[Unix] ⚠️ 没有找到占用端口 ${port} 的进程`);
+        }
+
+        // 验证终止是否成功
+        await new Promise(resolve => setTimeout(resolve, 500));
+        try {
+          await execAsync(`lsof -i :${port}`, { timeout: 2000 });
+          this.log(`[Unix] ⚠️ 端口 ${port} 仍被占用，可能终止失败`);
+          return false;
+        } catch (verifyError) {
+          this.log(`[Unix] ✅ 端口 ${port} 已释放`);
+          return true;
+        }
       } catch (error) {
-        this.log('[Unix] ⚠️ 进程终止失败');
+        this.log(`[Unix] ⚠️ 进程终止失败: ${error}`);
         return false;
       }
     }
@@ -856,71 +1031,203 @@ export class OpenCodeManager {
 
     for (const method of methods) {
       try {
+        this.log(`[Windows] 尝试方法: ${method.name}`);
         await execAsync(method.command, { timeout: 5000, shell: method.shell });
         this.log(`✅ 通过 ${method.name} 终止进程`);
-        return true;
+
+        // 验证终止是否成功
+        await new Promise(resolve => setTimeout(resolve, 500));
+        try {
+          const { stdout } = await execAsync(`netstat -aon | findstr :${port}`, { timeout: 2000 });
+          if (stdout.trim()) {
+            this.log(`⚠️ 端口 ${port} 仍被占用:\n${stdout}`);
+            // 继续尝试下一个方法
+          } else {
+            this.log(`✅ 端口 ${port} 已释放`);
+            return true;
+          }
+        } catch (verifyError) {
+          this.log(`✅ 端口 ${port} 已释放`);
+          return true;
+        }
       } catch (error: any) {
-        // 静默失败，尝试下一个方法
+        this.log(`⚠️ ${method.name} 失败: ${error.message || error}`);
+        // 继续尝试下一个方法
       }
     }
 
+    this.log(`[Windows] ⚠️ 所有方法都失败了`);
     return false;
+  }
+
+  /**
+   * 查找所有 opencode 进程
+   * @returns 进程 PID 列表
+   */
+  private async findAllOpenCodeProcesses(): Promise<number[]> {
+    this.log('========== 查找所有 opencode 进程 ==========');
+    const pids: number[] = [];
+
+    try {
+      if (isWindows()) {
+        // Windows: 使用 tasklist 和 findstr
+        const { stdout } = await execAsync(
+          'tasklist /FI "IMAGENAME eq opencode.exe" /FO CSV /NH',
+          { timeout: 5000 }
+        );
+
+        const lines = stdout.trim().split('\n');
+        for (const line of lines) {
+          // 解析 CSV 输出: "opencode.exe","12345","Console","1","150,000 K"
+          const match = line.match(/^"opencode\.exe","(\d+)"/);
+          if (match) {
+            const pid = parseInt(match[1], 10);
+            if (!pids.includes(pid)) {
+              pids.push(pid);
+            }
+          }
+        }
+
+        // 同时检查 node.exe 进程（可能是 opencode.cmd）
+        const { stdout: nodeStdout } = await execAsync(
+          'tasklist /FI "IMAGENAME eq node.exe" /FO CSV /NH',
+          { timeout: 5000 }
+        );
+
+        const nodeLines = nodeStdout.trim().split('\n');
+        for (const line of nodeLines) {
+          const match = line.match(/^"node\.exe","(\d+)"/);
+          if (match) {
+            const pid = parseInt(match[1], 10);
+            // 检查是否是 opencode 进程（通过命令行）
+            try {
+              const { stdout: cmdLine } = await execAsync(
+                `wmic process where ProcessId=${pid} get CommandLine /NOHDR`,
+                { timeout: 2000 }
+              );
+              if (cmdLine.toLowerCase().includes('opencode')) {
+                if (!pids.includes(pid)) {
+                  pids.push(pid);
+                }
+              }
+            } catch (cmdError) {
+              // 忽略无法检查命令行的进程
+            }
+          }
+        }
+      } else {
+        // Unix/macOS: 使用 ps 和 grep
+        const { stdout } = await execAsync(
+          'ps aux | grep -E "[o]pencode|[n]ode.*opencode" | awk \'{print $2}\'',
+          { timeout: 5000 }
+        );
+
+        const lines = stdout.trim().split('\n');
+        for (const line of lines) {
+          const pid = parseInt(line.trim(), 10);
+          if (!isNaN(pid) && !pids.includes(pid)) {
+            pids.push(pid);
+          }
+        }
+      }
+
+      this.log(`找到 ${pids.length} 个 opencode 进程: ${pids.join(', ') || '无'}`);
+    } catch (error) {
+      this.log(`查找进程失败: ${error}`);
+    }
+
+    return pids;
+  }
+
+  /**
+   * 终止指定 PID 的进程
+   * @param pid 进程 PID
+   * @returns 是否成功终止
+   */
+  private async killProcessByPid(pid: number): Promise<boolean> {
+    try {
+      if (isWindows()) {
+        await execAsync(`taskkill /F /PID ${pid}`, { timeout: 5000 });
+        this.log(`✅ 已终止进程 ${pid}`);
+        return true;
+      } else {
+        await execAsync(`kill -9 ${pid}`, { timeout: 5000 });
+        this.log(`✅ 已终止进程 ${pid}`);
+        return true;
+      }
+    } catch (error) {
+      this.log(`⚠️ 终止进程 ${pid} 失败: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * 终止所有 opencode 进程（强力清除）
+   * 这是最终的保底方法，确保所有 opencode 进程都被终止
+   * @returns 终止的进程数量
+   */
+  public async killAllOpenCodeProcesses(): Promise<number> {
+    this.log('========== 开始终止所有 opencode 进程 ==========');
+
+    // 1. 查找所有 opencode 进程
+    const pids = await this.findAllOpenCodeProcesses();
+
+    if (pids.length === 0) {
+      this.log('没有找到运行中的 opencode 进程');
+      return 0;
+    }
+
+    // 2. 终止所有找到的进程
+    let killedCount = 0;
+    for (const pid of pids) {
+      const success = await this.killProcessByPid(pid);
+      if (success) {
+        killedCount++;
+      }
+    }
+
+    // 3. 等待进程完全退出
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // 4. 验证是否所有进程都被终止
+    const remainingPids = await this.findAllOpenCodeProcesses();
+    if (remainingPids.length > 0) {
+      this.log(`⚠️ 仍有 ${remainingPids.length} 个进程未被终止: ${remainingPids.join(', ')}`);
+
+      // 尝试再次终止
+      for (const pid of remainingPids) {
+        const success = await this.killProcessByPid(pid);
+        if (success) {
+          killedCount++;
+        }
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    this.log(`========== 终止完成，共终止 ${killedCount} 个进程 ==========`);
+    return killedCount;
   }
 
   /**
    * 清理资源（扩展停用时调用）
    */
   public async cleanup(): Promise<void> {
-    const terminal = this.backgroundTerminal;
+    this.log('========== 开始清理资源（扩展停用） ==========');
 
-    if (terminal) {
-      this.log('清理后台终端（扩展停用）');
+    // 停止进程监控
+    this.stopProcessMonitoring();
 
-      // 发送 Ctrl+C + exit 让终端主动退出
-      try {
-        terminal.sendText('\x03');
-        terminal.sendText('exit');
-      } catch (error) {
-        this.log(`⚠️ 发送命令失败: ${error}`);
-      }
-
-      // 等待进程和终端优雅退出
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // 销毁终端引用
-      try {
-        terminal.sendText('exit');
-        await new Promise(resolve => setTimeout(resolve, 500));
-        terminal.dispose();
-        this.log('✅ 后台终端已清理');
-      } catch (error) {
-        this.log(`⚠️ 清理终端失败: ${error}`);
-      }
-      this.backgroundTerminal = undefined;
-
-      // 使用系统命令确保进程被终止
-      const port = this.config.defaultPort;
-      await this.killProcessByPortCrossPlatform(port);
-
-      this.log('✅ 清理完成');
-    }
-  }
-
-  /**
-   * 杀掉 OpenCode 进程
-   * @param emitEvent 是否触发事件（默认为 true）
-   */
-  async killProcess(emitEvent: boolean = true): Promise<void> {
-    this.log('开始终止 OpenCode 进程');
-
+    // 强制终止所有 opencode 进程（使用新的强力终止方法）
     try {
-      // 保存终端引用到本地变量，避免被 onDidCloseTerminal 事件影响
       const terminal = this.backgroundTerminal;
 
       if (terminal) {
-        // 方式1：发送 Ctrl+C + exit 到终端（优雅关闭）
+        this.log('清理后台终端（扩展停用）');
+
+        // 发送 Ctrl+C + exit 让终端主动退出
         try {
-          terminal.sendText('\x03');  // Ctrl+C
+          terminal.sendText('\x03');
           terminal.sendText('exit');
         } catch (error) {
           this.log(`⚠️ 发送命令失败: ${error}`);
@@ -929,7 +1236,65 @@ export class OpenCodeManager {
         // 等待进程和终端优雅退出
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        // 方式2：清理终端引用
+        // 销毁终端引用
+        try {
+          terminal.sendText('exit');
+          await new Promise(resolve => setTimeout(resolve, 500));
+          terminal.dispose();
+          this.log('✅ 后台终端已清理');
+        } catch (error) {
+          this.log(`⚠️ 清理终端失败: ${error}`);
+        }
+        this.backgroundTerminal = undefined;
+      }
+
+      // 使用系统命令确保进程被终止
+      this.log('使用系统命令确保所有 opencode 进程被终止');
+      const port = this.config.defaultPort;
+
+      // 步骤 1: 终止占用端口的进程
+      await this.killProcessByPortCrossPlatform(port);
+
+      // 步骤 2: 强制终止所有 opencode 进程
+      await this.killAllOpenCodeProcesses();
+
+      this.log('✅ 清理完成');
+    } catch (error) {
+      this.log(`⚠️ 清理过程中出错: ${error}`);
+    }
+
+    this.log('========== 清理完成 ==========');
+  }
+
+  /**
+   * 杀掉 OpenCode 进程
+   * @param emitEvent 是否触发事件（默认为 true）
+   * @param forceAll 是否强制终止所有 opencode 进程（默认为 true）
+   */
+  async killProcess(emitEvent: boolean = true, forceAll: boolean = true): Promise<void> {
+    this.log('========== 开始终止 OpenCode 进程 ==========');
+
+    // 停止进程监控
+    this.stopProcessMonitoring();
+
+    try {
+      // 步骤 1: 优雅关闭（通过终端）
+      const terminal = this.backgroundTerminal;
+
+      if (terminal) {
+        this.log('步骤 1: 尝试优雅关闭（通过终端）');
+        try {
+          terminal.sendText('\x03');  // Ctrl+C
+          terminal.sendText('exit');
+          this.log('✅ 已发送 Ctrl+C + exit 到终端');
+        } catch (error) {
+          this.log(`⚠️ 发送命令失败: ${error}`);
+        }
+
+        // 等待进程和终端优雅退出
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // 清理终端引用
         try {
           terminal.sendText('exit');
           await new Promise(resolve => setTimeout(resolve, 500));
@@ -941,14 +1306,22 @@ export class OpenCodeManager {
         this.backgroundTerminal = undefined;
       }
 
-      // 方式3：使用系统命令确保进程被终止（跨 shell 兼容）
+      // 步骤 2: 终止占用端口的进程
+      this.log('步骤 2: 终止占用端口的进程');
       const port = this.config.defaultPort;
-      const killed = await this.killProcessByPortCrossPlatform(port);
-      if (!killed) {
-        this.log('⚠️ 系统命令失败（可能进程已不存在）');
+      const portKilled = await this.killProcessByPortCrossPlatform(port);
+      if (!portKilled) {
+        this.log('⚠️ 端口终止方法失败（可能进程已不存在）');
       }
 
-      this.log('✅ 进程终止完成');
+      // 步骤 3: 强制终止所有 opencode 进程（保底）
+      if (forceAll) {
+        this.log('步骤 3: 强制终止所有 opencode 进程（保底）');
+        const allKilled = await this.killAllOpenCodeProcesses();
+        this.log(`✅ 保底方法终止了 ${allKilled} 个进程`);
+      }
+
+      this.log('✅ 所有终止步骤已完成');
 
       // 触发事件
       if (emitEvent) {
@@ -965,6 +1338,16 @@ export class OpenCodeManager {
     } catch (error: any) {
       this.log(`❌ 进程终止错误: ${error.message}`);
 
+      // 即使出错也尝试保底方法
+      try {
+        if (forceAll) {
+          this.log('尝试保底终止方法...');
+          await this.killAllOpenCodeProcesses();
+        }
+      } catch (fallbackError) {
+        this.log(`保底方法也失败了: ${fallbackError}`);
+      }
+
       // 即使出错也触发事件（进程可能已经不存在）
       if (emitEvent) {
         this.eventManager.emitProcessStateChanged({
@@ -978,6 +1361,8 @@ export class OpenCodeManager {
         });
       }
     }
+
+    this.log('========== 进程终止流程完成 ==========');
   }
 
   /**

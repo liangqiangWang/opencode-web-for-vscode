@@ -25,22 +25,44 @@ export class OpenCodeClient {
   async checkHealth(timeout?: number): Promise<boolean> {
     const checkTimeout = timeout || this.config.healthCheckTimeout;
     let timeoutHandle: NodeJS.Timeout | undefined;
+    let completed = false;
 
     const timeoutPromise = new Promise<boolean>((resolve) => {
       timeoutHandle = setTimeout(() => {
-        resolve(false);
+        if (!completed) {
+          console.log(`[OpenCodeClient] 健康检查超时（${checkTimeout}ms）`);
+          resolve(false);
+        }
       }, checkTimeout);
     });
 
     const fetchPromise = (async () => {
       try {
-        const response = await fetch(`${this.baseUrl}${API_ENDPOINTS.HEALTH}`, {
+        const url = `${this.baseUrl}${API_ENDPOINTS.HEALTH}`;
+        console.log(`[OpenCodeClient] 开始健康检查: ${url}, 超时: ${checkTimeout}ms`);
+
+        const response = await fetch(url, {
           method: 'GET'
         });
-        if (timeoutHandle) clearTimeout(timeoutHandle);
-        return response.ok;
+
+        if (!completed) {
+          completed = true;
+          if (timeoutHandle) clearTimeout(timeoutHandle);
+
+          const success = response.ok;
+          console.log(`[OpenCodeClient] 健康检查结果: ${success}, 状态码: ${response.status}`);
+          return success;
+        }
+
+        return false;
       } catch (error) {
-        if (timeoutHandle) clearTimeout(timeoutHandle);
+        if (!completed) {
+          completed = true;
+          if (timeoutHandle) clearTimeout(timeoutHandle);
+
+          console.log(`[OpenCodeClient] 健康检查失败: ${error}`);
+          return false;
+        }
         return false;
       }
     })();

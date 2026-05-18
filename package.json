@@ -121,6 +121,31 @@
         "command": "opencode-web.changeLanguage",
         "title": "%command.changeLanguage.title%",
         "icon": "$(globe)"
+      },
+      {
+        "command": "opencode-web.debugStatus",
+        "title": "%command.debugStatus.title%",
+        "icon": "$(bug)"
+      },
+      {
+        "command": "opencode-web.debugLanguage",
+        "title": "%command.debugLanguage.title%",
+        "icon": "$(symbol-text)"
+      },
+      {
+        "command": "opencode-web.forceReady",
+        "title": "%command.forceReady.title%",
+        "icon": "$(check)"
+      },
+      {
+        "command": "opencode-web.debugProcessHealth",
+        "title": "%command.debugProcessHealth.title%",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "opencode-web.killAllProcesses",
+        "title": "%command.killAllProcesses.title%",
+        "icon": "$(trash)"
       }
     ],
     "submenus": [

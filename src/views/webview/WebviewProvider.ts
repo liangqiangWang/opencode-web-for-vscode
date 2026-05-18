@@ -31,6 +31,8 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
   private isStarting: boolean = false; // 是否正在启动中
   private isRestarting: boolean = false; // 是否正在重启中
   private visibilityChangeTimer: NodeJS.Timeout | undefined; // 可见性变化防抖定时器
+  private statusCheckTimer: NodeJS.Timeout | undefined; // 状态检查定时器
+  private restartTimeoutTimer: NodeJS.Timeout | undefined; // 重启超时定时器
   private eventManager: OpenCodeEventManager;
 
   // 初始化锁机制
@@ -72,42 +74,84 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
    * 处理进程状态变化
    */
   private handleProcessStateChange(data: ProcessStateChangeEvent): void {
+    this.log(`处理进程状态变化: ${data.status}, isRestarting: ${this.isRestarting}, isStarting: ${this.isStarting}`);
+
     switch (data.status) {
       case OpenCodeStatus.Running:
+        // Running 状态总是优先，清除所有启动/重启标志
         this.isStarting = false;
         this.isRestarting = false;
         this.isConnected = true;
         this.setState('ready', '');
-        break;
-      case OpenCodeStatus.NotRunning:
-        // 如果正在启动或重启，不要覆盖启动状态
-        if (this.isStarting || this.isRestarting) {
-          this.log('正在启动/重启中，忽略 NotRunning 事件');
-          this.isConnected = false;
-          return;
+        this.log('✅ 状态已更新为 ready');
+
+        // 清除重启超时定时器
+        if (this.restartTimeoutTimer) {
+          clearTimeout(this.restartTimeoutTimer);
+          this.restartTimeoutTimer = undefined;
+          this.log('已清除重启超时定时器');
         }
-        this.isStarting = false;
-        this.isRestarting = false;
-        this.isConnected = false;
-        this.setState('error', l10n.t('status.notRunning'));
         break;
+
+      case OpenCodeStatus.NotRunning:
+        // NotRunning 状态只在非启动/重启时显示错误
+        // 但总是要更新连接状态
+        this.isConnected = false;
+
+        if (this.isStarting || this.isRestarting) {
+          this.log('正在启动/重启中，NotRunning 事件不更新 UI（但更新连接状态）');
+          // 不 return，继续执行以更新连接状态
+        } else {
+          this.isStarting = false;
+          this.isRestarting = false;
+          this.setState('error', l10n.t('status.notRunning'));
+          this.log('状态已更新为 error（未运行）');
+        }
+        break;
+
       case OpenCodeStatus.NotInstalled:
         this.isStarting = false;
         this.isRestarting = false;
         this.isConnected = false;
         this.isInstalled = false;
         this.setState('notInstalled', l10n.t('status.notInstalled'));
+        this.log('状态已更新为 notInstalled');
         break;
+
       case OpenCodeStatus.Restarting:
         this.isRestarting = true;
         this.isStarting = false;
         this.setState('restarting', l10n.t('status.restarting'));
+        this.log('状态已更新为 restarting');
+
+        // 设置重启超时（30 秒后自动恢复）
+        if (this.restartTimeoutTimer) {
+          clearTimeout(this.restartTimeoutTimer);
+        }
+        this.restartTimeoutTimer = setTimeout(async () => {
+          this.log('⚠️ 重启超时（30 秒），检查实际状态并恢复');
+          this.isRestarting = false;
+
+          // 检查实际状态并更新 UI
+          const actualStatus = await this.openCodeManager.getStatus();
+          this.log(`超时检查实际状态: ${actualStatus}`);
+
+          if (actualStatus === OpenCodeStatus.Running) {
+            this.isConnected = true;
+            this.setState('ready', '');
+          } else {
+            this.isConnected = false;
+            this.setState('error', l10n.t('status.notRunning'));
+          }
+        }, 30000);
         break;
+
       case OpenCodeStatus.Error:
         this.isStarting = false;
         this.isRestarting = false;
         this.isConnected = false;
         this.setState('error', data.error || l10n.t('status.error'));
+        this.log('状态已更新为 error');
         break;
     }
   }
@@ -131,9 +175,11 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
 
   /**
    * 恢复 Webview 状态
-   * 当 webview 可见时调用，会主动检查实际状态
+   * 当 webview 可见时调用，会主动检查实际状态并更新 UI
    */
   private async restoreWebviewState(): Promise<void> {
+    this.log('========== restoreWebviewState 开始 ==========');
+
     // 首先检查 webviewView 的 HTML 是否为空
     if (this.webviewView) {
       const isHtmlEmpty = !this.webviewView.webview.html || this.webviewView.webview.html.trim() === '';
@@ -149,44 +195,43 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
       }
     }
 
-    // 先检查 OpenCode 的实际状态
+    // 检查 OpenCode 的实际状态
+    let actualStatus: OpenCodeStatus;
     try {
-      const actualStatus = await this.openCodeManager.getStatus();
+      actualStatus = await this.openCodeManager.getStatus();
       this.log(`Webview 可见，检查实际状态: ${actualStatus}`);
-
-      // 同步本地状态
-      if (actualStatus === OpenCodeStatus.Running) {
-        this.isConnected = true;
-        this.isInstalled = true;
-        this.isStarting = false;
-        this.isRestarting = false;
-      } else if (actualStatus === OpenCodeStatus.NotRunning) {
-        this.isConnected = false;
-        this.isInstalled = true;
-        this.isStarting = false;
-        this.isRestarting = false;
-      } else if (actualStatus === OpenCodeStatus.NotInstalled) {
-        this.isConnected = false;
-        this.isInstalled = false;
-        this.isStarting = false;
-        this.isRestarting = false;
-      }
     } catch (error) {
       this.log(`检查状态失败: ${error}`);
+      actualStatus = OpenCodeStatus.NotRunning;
     }
 
-    // 根据同步后的状态更新 UI
-    if (this.isConnected) {
+    // 同步本地状态标志
+    if (actualStatus === OpenCodeStatus.Running) {
+      this.isConnected = true;
+      this.isInstalled = true;
+      this.isStarting = false;
+      this.isRestarting = false;
+      this.log('状态同步: OpenCode 运行中，设置 ready');
       this.setState('ready', '');
-    } else if (this.isRestarting) {
-      this.setState('restarting', l10n.t('status.restarting'));
-    } else if (this.isStarting) {
-      this.setState('loading', l10n.t('status.starting'));
-    } else if (this.isInstalled) {
+      // 启动定期状态检查
+      this.startPeriodicStatusCheck();
+    } else if (actualStatus === OpenCodeStatus.NotRunning) {
+      this.isConnected = false;
+      this.isInstalled = true;
+      this.isStarting = false;
+      this.isRestarting = false;
+      this.log('状态同步: OpenCode 未运行，显示错误');
       this.setState('error', l10n.t('status.notRunning'));
-    } else {
+    } else if (actualStatus === OpenCodeStatus.NotInstalled) {
+      this.isConnected = false;
+      this.isInstalled = false;
+      this.isStarting = false;
+      this.isRestarting = false;
+      this.log('状态同步: OpenCode 未安装，显示安装提示');
       this.setState('notInstalled', l10n.t('status.notInstalled'));
     }
+
+    this.log('========== restoreWebviewState 完成 ==========');
   }
 
   /**
@@ -269,13 +314,12 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
       this.updateWebview();
       this.log('HTML 已重新设置，等待 ready 消息');
 
-      // 添加超时检测：如果 5 秒后仍未初始化，强制重试
-      setTimeout(() => {
+      // 添加超时检测：如果 5 秒后仍未初始化，主动触发初始化
+      setTimeout(async () => {
         if (!this.isInitialized) {
-          this.log('警告：5 秒后仍未初始化，强制重置状态');
-          this.isInitialized = false;
-          this.isStarting = false;
-          this.initializationLock = undefined;
+          this.log('警告：5 秒后仍未收到 ready 消息，主动触发初始化');
+          // 直接调用初始化，不依赖 ready 消息
+          await this.initializeOpenCode();
         }
       }, 5000);
     } else {
@@ -297,57 +341,57 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
    * 处理来自 Webview 的消息
    */
   private async handleMessage(message: WebviewMessage): Promise<void> {
-    switch (message.type) {
-      case 'ready':
-        // 只在第一次初始化时执行完整的初始化流程
-        if (!this.isInitialized) {
+    try {
+      this.log(`处理消息类型: ${message.type}`);
+
+      switch (message.type) {
+        case 'ready':
+          this.log('收到 ready 消息，开始初始化流程');
+          // 总是重新检查状态，确保状态同步
+          // 不再依赖 isInitialized 标志，避免状态过期问题
+          this.log('重新检查 OpenCode 状态...');
           await this.initializeOpenCode();
-        } else {
-          // 已经初始化过，恢复当前状态
-          this.log('Webview 已就绪，恢复当前状态');
-          if (this.isConnected) {
-            this.setState('ready', '');
-          } else if (this.isStarting) {
-            this.setState('loading', l10n.t('status.starting'));
-          } else if (this.isInstalled) {
-            this.setState('error', l10n.t('status.notRunning'));
-          } else {
-            this.setState('notInstalled', l10n.t('status.notInstalled'));
-          }
-        }
-        break;
+          break;
 
-      case 'startOpencode':
-        // 用户点击启动按钮
-        await this.startOpenCode();
-        break;
+        case 'startOpencode':
+          // 用户点击启动按钮
+          await this.startOpenCode();
+          break;
 
-      case 'checkConnection':
-        // 检查连接状态
-        await this.checkAndNotifyConnection();
-        break;
+        case 'checkConnection':
+          // 检查连接状态
+          await this.checkAndNotifyConnection();
+          break;
 
-      case 'openInBrowser':
-        this.onOpenInBrowser();
-        break;
+        case 'openInBrowser':
+          this.onOpenInBrowser();
+          break;
 
-      case 'toggleSidebar':
-        this.onToggleSidebar();
-        break;
+        case 'toggleSidebar':
+          this.onToggleSidebar();
+          break;
 
-      case 'openTui':
-        this.onOpenTui();
-        break;
+        case 'openTui':
+          this.onOpenTui();
+          break;
 
-      case 'showHelp':
-        // 显示帮助面板
-        await this.showHelpPanel();
-        break;
+        case 'showHelp':
+          // 显示帮助面板
+          await this.showHelpPanel();
+          break;
 
-      case 'changeLanguage':
-        // 打开语言设置
-        vscode.commands.executeCommand('workbench.action.openSettings', 'opencode.language');
-        break;
+        case 'changeLanguage':
+          // 打开语言设置
+          vscode.commands.executeCommand('workbench.action.openSettings', 'opencode.language');
+          break;
+
+        default:
+          this.log(`未知消息类型: ${message.type}`);
+      }
+    } catch (error) {
+      this.log(`处理消息时出错: ${error}`);
+      // 发生错误时，确保不会卡在 loading 状态
+      this.setState('error', l10n.t('message.initFailed', String(error)));
     }
   }
 
@@ -358,16 +402,17 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
     this.log('========== initializeOpenCode 开始 ==========');
     this.log(`当前状态 - isInitialized: ${this.isInitialized}, isStarting: ${this.isStarting}, isConnected: ${this.isConnected}`);
 
-    // 如果已有初始化正在进行，等待它完成
+    // 如果已有初始化正在进行，等待它完成后创建新的初始化
+    // 这样可以避免并发初始化，但也允许在初始化完成后重新检查状态
     if (this.initializationLock) {
       this.log('初始化正在进行中，等待现有初始化完成...');
       try {
         await this.initializationLock;
-        this.log('现有初始化已完成');
+        this.log('现有初始化已完成，创建新的初始化');
       } catch (error) {
-        this.log(`等待初始化失败: ${error}`);
+        this.log(`等待初始化失败: ${error}，继续创建新的初始化`);
       }
-      return;
+      // 不 return，继续创建新的初始化
     }
 
     // 创建新的初始化 Promise
@@ -395,7 +440,16 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
         this.log('已设置 loading 状态');
 
         // 通过 OpenCodeManager 获取状态（已包含安装检查）
-        const status = await this.openCodeManager.getStatus();
+        // 添加超时保护，防止健康检查挂起
+        const statusPromise = this.openCodeManager.getStatus();
+        const timeoutPromise = new Promise<OpenCodeStatus>((resolve) => {
+          setTimeout(() => {
+            this.log('getStatus() 超时（5秒），返回 NotRunning');
+            resolve(OpenCodeStatus.NotRunning);
+          }, 5000);
+        });
+
+        const status = await Promise.race([statusPromise, timeoutPromise]);
         this.log(`getStatus() 返回: ${status}`);
 
         // 检查是否已被新的初始化取代
@@ -430,6 +484,10 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
             this.log(`未知状态: ${status}`);
             this.setState('error', l10n.t('message.unknownState'));
         }
+
+        // 启动定期状态检查（仅在成功初始化后）
+        this.startPeriodicStatusCheck();
+
       } catch (error) {
         this.log(`初始化失败: ${error}`);
         this.setState('error', l10n.t('message.initFailed', error));
@@ -441,6 +499,51 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
 
     // 等待初始化完成
     await this.initializationLock;
+  }
+
+  /**
+   * 启动定期状态检查
+   * 用于检测 OpenCode 状态变化并及时更新 UI
+   */
+  private startPeriodicStatusCheck(): void {
+    // 清除之前的定时器
+    if (this.statusCheckTimer) {
+      clearInterval(this.statusCheckTimer);
+    }
+
+    // 每 5 秒检查一次状态
+    this.statusCheckTimer = setInterval(async () => {
+      // 只在 Webview 可见时检查
+      if (this.webviewView && this.webviewView.visible) {
+        try {
+          const currentStatus = await this.openCodeManager.getStatus();
+          this.log(`定期状态检查: ${currentStatus}`);
+
+          // 如果状态是 Running 但 UI 没有更新，强制更新
+          if (currentStatus === OpenCodeStatus.Running && !this.isConnected) {
+            this.log('检测到状态不匹配，强制更新为 ready');
+            this.isConnected = true;
+            this.isInstalled = true;
+            this.setState('ready', '');
+          }
+        } catch (error) {
+          this.log(`定期状态检查失败: ${error}`);
+        }
+      }
+    }, 5000);
+
+    this.log('已启动定期状态检查（每 5 秒）');
+  }
+
+  /**
+   * 停止定期状态检查
+   */
+  private stopPeriodicStatusCheck(): void {
+    if (this.statusCheckTimer) {
+      clearInterval(this.statusCheckTimer);
+      this.statusCheckTimer = undefined;
+      this.log('已停止定期状态检查');
+    }
   }
 
   /**
@@ -842,6 +945,10 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
   <script>
     console.log('=== 脚本开始执行 ===');
 
+    // 保存 OpenCode URL 到全局变量
+    const url = '${url}';
+    console.log('OpenCode URL:', url);
+
     // 注入语言包
     try {
       window.L10N_BUNDLE = ${bundleJson};
@@ -1045,6 +1152,8 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
 
       // 检查是否有保存的有效状态
       const savedState = loadState();
+      console.log('保存的状态:', savedState);
+      console.log('状态是否有效:', isStateValid(savedState));
 
       if (isStateValid(savedState)) {
         // 恢复保存的状态，不发送 ready 消息
@@ -1055,7 +1164,12 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
         console.log('首次加载或状态过期，初始化...');
         setTimeout(() => {
           console.log('=== 发送 ready 消息 ===');
-          vscode.postMessage({ type: 'ready' });
+          try {
+            vscode.postMessage({ type: 'ready' });
+            console.log('ready 消息已发送');
+          } catch (error) {
+            console.error('发送 ready 消息失败:', error);
+          }
         }, 100);
       }
     });
@@ -1329,6 +1443,14 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
     if (this.visibilityChangeTimer) {
       clearTimeout(this.visibilityChangeTimer);
     }
+
+    // 清理重启超时定时器
+    if (this.restartTimeoutTimer) {
+      clearTimeout(this.restartTimeoutTimer);
+    }
+
+    // 清理状态检查定时器
+    this.stopPeriodicStatusCheck();
 
     // 清理事件监听器
     this.eventManager.removeAllListenersForEvent(EventType.ProcessStateChanged);
