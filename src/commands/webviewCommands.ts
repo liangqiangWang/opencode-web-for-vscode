@@ -46,6 +46,9 @@ export function registerWebviewCommands(
       );
 
       if (confirmed === l10n.t('button.confirm')) {
+        // 显示操作中提示
+        vscode.window.showInformationMessage(l10n.t('message.killInProgress'));
+
         try {
           await openCodeManager.killProcess(true, true);
           // 主动刷新状态以反映进程已终止
@@ -87,6 +90,9 @@ export function registerWebviewCommands(
       );
 
       if (confirmed === l10n.t('button.confirm')) {
+        // 显示操作中提示
+        vscode.window.showInformationMessage(l10n.t('message.restartInProgress'));
+
         try {
           await openCodeManager.restartProcess();
           // 主动刷新状态以反映重启结果

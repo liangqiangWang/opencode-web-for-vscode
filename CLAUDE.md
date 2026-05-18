@@ -137,8 +137,7 @@ webview.html = `
 - 运行时翻译是**动态翻译**，由扩展配置控制，支持热切换
 - 用户修改 VSCode 显示语言后，需要重新加载窗口才能看到菜单翻译变化
 
-**切换语言功能**：
-- 浮动按钮：在 ready 状态下，右上角显示地球图标按钮
+**切换语言功能**（仅菜单方式）：
 - 菜单方式：点击侧边栏的"更多操作"（...）→ "切换语言"
 - 命令面板：`Ctrl+Shift+P` → 搜索 "Change Language"
 - 快捷命令：`Ctrl+Shift+P` → "OpenCode: Debug Language Status"（调试语言状态）
@@ -487,9 +486,6 @@ function isStateValid(savedState) {
 
 ### Q: 开发模式下为什么找不到语言包？
 **A**: 开发模式下，webpack 将文件编译到 `dist/` 目录，但 `extensionUri.fsPath` 仍指向源代码目录。代码会自动尝试两个路径，如果都找不到会使用硬编码的 DEFAULT_BUNDLE（英文）。
-
-### Q: 切换语言浮动按钮不显示？
-**A**: 浮动按钮只在 `ready` 状态（OpenCode 正常运行）时显示。如果 OpenCode 未启动或出错，按钮不会显示。此时可以使用菜单方式切换语言。
 
 ### 验证进程终止（Windows）
 ```powershell
