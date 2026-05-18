@@ -8,7 +8,7 @@ import { ConfigurationService } from '../../services/configuration';
 import { WebviewMessage, IWebviewProvider } from './types';
 import { OpenCodeManager } from '../../core/OpenCodeManager';
 import { getEventManager, OpenCodeEventManager } from '../../core/EventManager';
-import { ProcessStateChangeEvent, ConnectionChangeEvent, EventType } from '../../core/eventTypes';
+import { EventType } from '../../core/eventTypes';
 import { OpenCodeStatus } from '../../core/types';
 import { l10n } from '../../l10n';
 
@@ -68,78 +68,13 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
 
   /**
    * 设置事件监听器
+   * 注意：不再依赖 OpenCodeManager 的事件系统
+   * 所有状态检查都通过直接 HTTP 调用
    */
   private setupEventListeners(): void {
-    // 监听进程状态变化事件
-    this.eventManager.onProcessStateChanged((data: ProcessStateChangeEvent) => {
-      this.log(`收到进程状态变化事件: ${data.status}`);
-      this.handleProcessStateChange(data);
-    });
-
-    // 监听连接状态变化事件
-    this.eventManager.onConnectionChanged((data: ConnectionChangeEvent) => {
-      this.log(`收到连接状态变化事件: ${data.connected}`);
-      this.handleConnectionChange(data);
-    });
-  }
-
-  /**
-   * 处理进程状态变化事件
-   */
-  private handleProcessStateChange(data: ProcessStateChangeEvent): void {
-    // 在重启或启动过程中，忽略 NotRunning 事件
-    // 因为这是中间状态，不应该覆盖当前状态
-    if (data.status === OpenCodeStatus.NotRunning) {
-      if (this.currentState === 'restarting') {
-        this.log('重启过程中忽略 NotRunning 事件');
-        return;
-      }
-      if (this.currentState === 'initializing') {
-        this.log('启动过程中忽略 NotRunning 事件');
-        return;
-      }
-    }
-
-    const newState = this.mapOpenCodeStatusToWebviewState(data.status);
-    if (newState) {
-      this.currentState = newState;
-      this.updateUIByStatus({ state: newState, message: data.error || '' });
-
-      // 处理重启超时
-      if (data.status === OpenCodeStatus.Restarting) {
-        this.clearTimers('restart');
-        this.timers.restart = setTimeout(async () => {
-          this.log('重启超时（30 秒），检查实际状态');
-          await this.initializeWebview();
-        }, 30000);
-      } else if (data.status === OpenCodeStatus.Running) {
-        // 清除所有定时器（包括轮询定时器）
-        this.clearTimers('all');
-        this.log('进程运行中，清除所有定时器（包括轮询）');
-      }
-    }
-  }
-
-  /**
-   * 处理连接状态变化事件
-   */
-  private handleConnectionChange(data: ConnectionChangeEvent): void {
-    if (data.connected) {
-      // 连接成功，清除重启超时定时器
-      this.clearTimers('restart');
-      this.currentState = 'ready';
-      this.setState('ready', '');
-    } else {
-      // 连接断开，只在非初始化、非重启、非启动状态下显示错误
-      if (!this.isInitializing && this.currentState !== 'restarting' && this.currentState !== 'initializing') {
-        this.currentState = 'error';
-        this.setState('error', l10n.t('status.notRunning'));
-      }
-      // 在重启或启动过程中忽略连接断开事件
-      if (this.currentState === 'restarting' || this.currentState === 'initializing') {
-        this.log('重启/启动过程中忽略连接断开事件');
-      }
-    }
+    // 不再监听 OpenCodeManager 的事件
+    // 所有状态通过 HTTP 健康检查获取
+    this.log('事件监听器设置完成（不依赖 OpenCodeManager 事件）');
   }
 
   /**
@@ -377,7 +312,7 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
 
   /**
    * 启动 OpenCode
-   * 使用混合机制：事件 + 轮询备份
+   * 使用直接 HTTP 健康检查，不依赖事件系统
    */
   private async startOpenCode(): Promise<void> {
     try {
@@ -393,18 +328,19 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
         return;
       }
 
-      // 在后台启动
+      // 在后台启动（只负责启动进程）
       const success = await this.openCodeManager.startInBackground();
 
       if (success) {
-        this.log('OpenCode 启动成功，等待进程事件...');
+        this.log('OpenCode 启动命令已发送，开始健康检查...');
         this.setState('loading', l10n.t('status.waiting'));
-        // 事件系统会处理后续状态更新
+        // 直接使用 HTTP 健康检查
+        await this.healthCheckPolling();
       } else {
-        // 启动返回失败，启动轮询检查作为备份
-        this.log('OpenCode 启动返回失败，启动轮询检查机制...');
+        this.log('OpenCode 启动命令失败，尝试健康检查...');
         this.setState('loading', l10n.t('status.waiting'));
-        await this.pollUntilReady();
+        // 即使失败也尝试健康检查（进程可能已在运行）
+        await this.healthCheckPolling();
       }
     } catch (error) {
       this.log(`启动失败: ${error}`);
@@ -414,66 +350,51 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
   }
 
   /**
-   * 轮询检查直到进程就绪
-   * 作为事件系统的备份机制
+   * 直接通过 HTTP 健康检查 API 轮询服务状态
+   * 使用 /global/health 端点，简单可靠
    */
-  private async pollUntilReady(): Promise<void> {
-    const maxAttempts = 10; // 最多检查 10 次
-    const interval = 2000; // 每次间隔 2 秒
+  private async healthCheckPolling(): Promise<void> {
+    const maxAttempts = 15; // 最多检查 15 次
+    const interval = 1000; // 每次间隔 1 秒
     let attempts = 0;
 
-    this.log(`开始轮询检查（最多 ${maxAttempts} 次，间隔 ${interval}ms）`);
+    this.log(`开始健康检查轮询（最多 ${maxAttempts} 次，间隔 ${interval}ms）`);
 
     // 清除之前的轮询定时器
     this.clearTimers('poll');
 
     this.timers.poll = setInterval(async () => {
       attempts++;
-      this.log(`轮询检查 ${attempts}/${maxAttempts}`);
+      this.log(`健康检查 ${attempts}/${maxAttempts}`);
 
-      // 检查是否已经就绪（通过事件系统）
+      // 检查是否已经就绪
       if (this.currentState === 'ready') {
-        this.log('事件系统已更新状态为 ready，停止轮询');
+        this.log('状态已是 ready，停止轮询');
         this.clearTimers('poll');
         return;
       }
 
-      // 检查进程状态
       try {
-        const status = await this.openCodeManager.getStatus();
-        this.log(`轮询检查状态: ${status}`);
+        // 直接使用 OpenCodeManager 的 checkConnection（内部调用 /global/health）
+        const healthy = await this.openCodeManager.checkConnection(2000);
 
-        if (status === OpenCodeStatus.Running) {
-          // 再验证一次连接
-          const connected = await this.openCodeManager.checkConnection(3000);
-          if (connected) {
-            this.log('轮询检查：进程已就绪');
-            this.clearTimers('poll');
-            this.currentState = 'ready';
-            this.setState('ready', '');
-            return;
-          }
+        if (healthy) {
+          this.log('健康检查成功：服务已就绪');
+          this.clearTimers('poll');
+          this.currentState = 'ready';
+          this.setState('ready', '');
+          return;
         }
 
         // 达到最大尝试次数
         if (attempts >= maxAttempts) {
-          this.log(`轮询检查达到最大次数 (${maxAttempts})，放弃`);
+          this.log(`健康检查达到最大次数 (${maxAttempts})，服务未就绪`);
           this.clearTimers('poll');
-
-          // 最后一次尝试：直接检查连接
-          const lastCheck = await this.openCodeManager.checkConnection(5000);
-          if (lastCheck) {
-            this.log('最后一次连接检查成功');
-            this.currentState = 'ready';
-            this.setState('ready', '');
-          } else {
-            this.log('所有检查都失败');
-            this.currentState = 'error';
-            this.setState('error', l10n.t('message.startTimeout'));
-          }
+          this.currentState = 'error';
+          this.setState('error', l10n.t('message.startTimeout'));
         }
       } catch (error) {
-        this.log(`轮询检查失败: ${error}`);
+        this.log(`健康检查失败: ${error}`);
       }
     }, interval);
   }
