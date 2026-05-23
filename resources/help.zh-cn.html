@@ -140,6 +140,30 @@
 
     <h3>Q: 连接超时怎么办？</h3>
     <p>A: 可尝试点击顶部栏的"重启进程"按钮，会杀掉opencode进程，重新启动</p>
+
+    <h3>Q: 已安装 OpenCode，但仍提示"OpenCode 未安装"？</h3>
+    <p>A: 这可能是安装状态缓存导致的检测失败。请尝试：</p>
+    <ol>
+      <li>点击侧边栏顶部的<strong>刷新连接</strong>按钮</li>
+      <li>如果无效，重启 VSCode（<code>Ctrl+Shift+P</code> → "Reload Window"）</li>
+      <li>验证安装：在终端运行 <code>opencode --version</code></li>
+    </ol>
+
+    <h3>Q: OpenCode Web 界面的颜色与 VSCode 主题不匹配？</h3>
+    <p>A: OpenCode Web 目前无法自动适配 VSCode 主题。需要手动调整：</p>
+    <ol>
+      <li>点击 OpenCode 界面右上角的<strong>设置</strong>图标</li>
+      <li>在外观设置中切换<strong>颜色模式</strong>（亮色/暗色/自动）</li>
+      <li>选择与 VSCode 当前主题匹配的模式</li>
+    </ol>
+
+    <h3>Q: OpenCode Web 模式下无法复制粘贴内容？</h3>
+    <p>A: 由于 Webview 以 iframe 方式嵌入 VSCode，浏览器跨域安全限制导致键盘快捷键（<code>Ctrl+C</code>/<code>Ctrl+V</code>）无法正常工作。</p>
+    <p><strong>解决方案：</strong></p>
+    <ul>
+      <li>使用 OpenCode 界面内的<strong>复制按钮</strong>进行复制</li>
+      <li>或在独立终端中使用 OpenCode TUI（点击侧边栏"打开 TUI 终端"）</li>
+    </ul>
   </div>
 
   <div class="section">

@@ -140,6 +140,30 @@
 
     <h3>Q: What to do if connection times out?</h3>
     <p>A: Try clicking the "Restart Process" button in the top bar, which will kill the opencode process and restart it.</p>
+
+    <h3>Q: OpenCode is installed, but still shows "OpenCode not installed"?</h3>
+    <p>A: This may be due to installation status caching. Please try:</p>
+    <ol>
+      <li>Click the <strong>Refresh Connection</strong> button at the top of the sidebar</li>
+      <li>If that doesn't work, restart VSCode (<code>Ctrl+Shift+P</code> → "Reload Window")</li>
+      <li>Verify installation: run <code>opencode --version</code> in terminal</li>
+    </ol>
+
+    <h3>Q: OpenCode Web interface colors don't match VSCode theme?</h3>
+    <p>A: OpenCode Web currently cannot automatically adapt to VSCode themes. You need to manually adjust:</p>
+    <ol>
+      <li>Click the <strong>Settings</strong> icon in the upper-right corner of OpenCode interface</li>
+      <li>Switch <strong>Color Mode</strong> (Light/Dark/Auto) in appearance settings</li>
+      <li>Select a mode that matches your current VSCode theme</li>
+    </ol>
+
+    <h3>Q: Cannot copy/paste content in OpenCode Web mode?</h3>
+    <p>A: Due to browser cross-origin security restrictions (iframe embedding), keyboard shortcuts (<code>Ctrl+C</code>/<code>Ctrl+V</code>) may not work properly.</p>
+    <p><strong>Solutions:</strong></p>
+    <ul>
+      <li>Use the <strong>Copy button</strong> inside the OpenCode interface</li>
+      <li>Or use OpenCode TUI in a standalone terminal (click "Open TUI Terminal" in the sidebar)</li>
+    </ul>
   </div>
 
   <div class="section">
