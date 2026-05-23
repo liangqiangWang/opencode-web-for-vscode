@@ -2,7 +2,7 @@
   "name": "opencode-web-integration",
   "displayName": "OpenCode Web Integration",
   "description": "VSCode extension for OpenCode Web (unofficial)",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "hudi",
   "icon": "resources/icons/opencode.png",
   "license": "MIT",
