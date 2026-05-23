@@ -140,8 +140,10 @@ export class OpenCodeManager {
     const terminal = this.createOpenCodeTerminal(workspacePath);
     terminal.show();
 
-    // 发送启动命令
-    const command = `opencode ${START_ARGS.PORT} ${this.config.defaultPort}`;
+    // 发送启动命令（Windows 使用 cmd /c 确保兼容）
+    const command = isWindows()
+      ? `cmd /c "opencode.cmd ${START_ARGS.PORT} ${this.config.defaultPort}"`
+      : `opencode ${START_ARGS.PORT} ${this.config.defaultPort}`;
     terminal.sendText(command);
 
     // 等待服务就绪
@@ -191,8 +193,10 @@ export class OpenCodeManager {
       const terminal = this.createBackgroundTerminal(workspacePath);
 
       // 构建启动命令
+      // Windows: 使用 cmd /c 确保跨 shell 兼容（PowerShell/cmd/Git Bash）
+      // Unix: 直接执行 opencode
       const command = isWindows()
-        ? `opencode.cmd ${START_ARGS.PORT} ${this.config.defaultPort}`
+        ? `cmd /c "opencode.cmd ${START_ARGS.PORT} ${this.config.defaultPort}"`
         : `opencode ${START_ARGS.PORT} ${this.config.defaultPort}`;
 
       this.log(`启动 OpenCode: ${command}`);
@@ -427,8 +431,10 @@ export class OpenCodeManager {
     const terminal = this.createOpenCodeTerminal(workspacePath);
     terminal.show();
 
-    // 发送 attach 命令
-    const command = `opencode ${START_ARGS.ATTACH} ${this.baseUrl} ${START_ARGS.DIR} ${workspacePath}`;
+    // 发送 attach 命令（Windows 使用 cmd /c 确保兼容）
+    const command = isWindows()
+      ? `cmd /c "opencode.cmd ${START_ARGS.ATTACH} ${this.baseUrl} ${START_ARGS.DIR} ${workspacePath}"`
+      : `opencode ${START_ARGS.ATTACH} ${this.baseUrl} ${START_ARGS.DIR} ${workspacePath}`;
     terminal.sendText(command);
 
     // 等待服务就绪
@@ -915,8 +921,10 @@ export class OpenCodeManager {
       const terminal = this.createOpenCodeTerminal(workspacePath);
       terminal.show();
 
-      // 发送 attach 命令
-      const command = `opencode ${START_ARGS.ATTACH} ${this.baseUrl} ${START_ARGS.DIR} ${workspacePath}`;
+      // 发送 attach 命令（Windows 使用 cmd /c 确保兼容）
+      const command = isWindows()
+        ? `cmd /c "opencode.cmd ${START_ARGS.ATTACH} ${this.baseUrl} ${START_ARGS.DIR} ${workspacePath}"`
+        : `opencode ${START_ARGS.ATTACH} ${this.baseUrl} ${START_ARGS.DIR} ${workspacePath}`;
       terminal.sendText(command);
 
       // 等待 attach 完成
@@ -926,8 +934,10 @@ export class OpenCodeManager {
       const terminal = this.createOpenCodeTerminal(workspacePath);
       terminal.show();
 
-      // 发送启动命令
-      const command = `opencode ${START_ARGS.PORT} ${this.config.defaultPort}`;
+      // 发送启动命令（Windows 使用 cmd /c 确保兼容）
+      const command = isWindows()
+        ? `cmd /c "opencode.cmd ${START_ARGS.PORT} ${this.config.defaultPort}"`
+        : `opencode ${START_ARGS.PORT} ${this.config.defaultPort}`;
       terminal.sendText(command);
     }
   }
