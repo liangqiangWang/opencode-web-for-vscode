@@ -48,7 +48,7 @@ A VSCode extension that integrates OpenCode Web functionality into the sidebar.
 
 ### Process Management
 
-<img src="https://raw.githubusercontent.com/liangqiangWang/opencode-web-for-vscode/master/screenshot/menu_view.png" width="600"/>
+<img src="https://raw.githubusercontent.com/liangqiangWang/opencode-web-for-vscode/master/screenshot/en_us/menu_view.png" width="600"/>
 
 In the sidebar toolbar:
 - **Refresh Connection**: Refresh the OpenCode Web page
