@@ -9,6 +9,7 @@
   "command.restartProcess.title": "重启进程",
   "command.refreshWebview.title": "刷新连接",
   "command.showHelp.title": "查看帮助",
+  "command.reportIssue.title": "问题反馈",
   "command.changeLanguage.title": "切换语言",
   "command.debugStatus.title": "调试：诊断状态",
   "command.debugLanguage.title": "调试：语言状态",

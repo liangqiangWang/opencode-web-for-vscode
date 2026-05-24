@@ -9,6 +9,7 @@
   "command.restartProcess.title": "프로세스 다시 시작",
   "command.refreshWebview.title": "연결 새로고침",
   "command.showHelp.title": "도움말 보기",
+  "command.reportIssue.title": "문제 보고",
   "command.changeLanguage.title": "언어 변경",
   "submenu.moreMenu.label": "더 많은 작업",
   "submenu.processManagementMenu.label": "프로세스 관리",

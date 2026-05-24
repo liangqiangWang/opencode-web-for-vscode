@@ -111,6 +111,13 @@ export function registerWebviewCommands(
     })
   );
 
+  // 问题反馈
+  context.subscriptions.push(
+    vscode.commands.registerCommand('opencode-web.reportIssue', () => {
+      vscode.env.openExternal(vscode.Uri.parse('https://github.com/liangqiangWang/opencode-web-for-vscode/issues'));
+    })
+  );
+
   // 刷新 Webview
   context.subscriptions.push(
     vscode.commands.registerCommand('opencode-web.refreshWebview', async () => {

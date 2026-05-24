@@ -9,6 +9,7 @@
   "command.restartProcess.title": "Restart Process",
   "command.refreshWebview.title": "Refresh Connection",
   "command.showHelp.title": "View Help",
+  "command.reportIssue.title": "Report Issue",
   "command.changeLanguage.title": "Change Language",
   "command.debugStatus.title": "Debug: Diagnose Status",
   "command.debugLanguage.title": "Debug: Language Status",

@@ -118,6 +118,11 @@
         "icon": "$(question)"
       },
       {
+        "command": "opencode-web.reportIssue",
+        "title": "%command.reportIssue.title%",
+        "icon": "$(feedback)"
+      },
+      {
         "command": "opencode-web.changeLanguage",
         "title": "%command.changeLanguage.title%",
         "icon": "$(globe)"
@@ -198,16 +203,20 @@
           "group": "1_actions@2"
         },
         {
-          "command": "opencode-web.showHelp",
-          "group": "1_actions@3"
-        },
-        {
           "command": "opencode-web.changeLanguage",
-          "group": "1_actions@4"
+          "group": "1_actions@3"
         },
         {
           "submenu": "opencode-web.processManagementMenu",
           "group": "2_process@1"
+        },
+        {
+          "command": "opencode-web.showHelp",
+          "group": "3_help@1"
+        },
+        {
+          "command": "opencode-web.reportIssue",
+          "group": "3_help@2"
         }
       ],
       "opencode-web.processManagementMenu": [

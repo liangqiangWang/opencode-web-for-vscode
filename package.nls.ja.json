@@ -9,6 +9,7 @@
   "command.restartProcess.title": "プロセスを再起動",
   "command.refreshWebview.title": "接続を更新",
   "command.showHelp.title": "ヘルプを表示",
+  "command.reportIssue.title": "問題を報告",
   "command.changeLanguage.title": "言語を変更",
   "submenu.moreMenu.label": "その他の操作",
   "submenu.processManagementMenu.label": "プロセス管理",
