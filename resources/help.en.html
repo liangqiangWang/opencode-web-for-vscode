@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OpenCode Web Plugin Help</title>
+  <title>OpenCode Web Integration Help</title>
   <style>
     body {
       font-family: var(--vscode-font-family);
@@ -15,18 +16,22 @@
       max-width: 900px;
       margin: 0 auto;
     }
+
     h1 {
       color: var(--vscode-editor-foreground);
       border-bottom: 1px solid var(--vscode-panel-border);
       padding-bottom: 10px;
     }
+
     h2 {
       color: var(--vscode-editor-foreground);
       margin-top: 30px;
     }
+
     h3 {
       color: var(--vscode-textLink-foreground);
     }
+
     .section {
       margin-bottom: 30px;
       padding: 20px;
@@ -34,12 +39,14 @@
       border-radius: 8px;
       border: 1px solid var(--vscode-panel-border);
     }
+
     code {
       background-color: var(--vscode-textCodeBlock-background);
       padding: 2px 6px;
       border-radius: 3px;
       font-family: var(--vscode-editor-font-family);
     }
+
     pre {
       background-color: var(--vscode-textCodeBlock-background);
       padding: 15px;
@@ -47,47 +54,58 @@
       overflow-x: auto;
       border-left: 3px solid var(--vscode-textLink-foreground);
     }
+
     pre code {
       background-color: transparent;
       padding: 0;
     }
+
     a {
       color: var(--vscode-textLink-foreground);
     }
+
     a:hover {
       text-decoration: underline;
     }
+
     .warning {
       background-color: var(--vscode-editorInfo-background);
       border-left: 4px solid var(--vscode-editorInfo-foreground);
       padding: 15px;
       margin: 20px 0;
     }
-    ul, ol {
+
+    ul,
+    ol {
       margin: 10px 0;
       padding-left: 20px;
     }
+
     li {
       margin: 5px 0;
     }
   </style>
 </head>
+
 <body>
-  <h1>OpenCode Help Documentation</h1>
+  <h1>OpenCode Web Integration Help</h1>
 
   <div class="section">
-    <h2>What is OpenCode?</h2>
-    <p>OpenCode is a powerful AI coding assistant that can help you:</p>
+    <h2>What is OpenCode Web Integration?</h2>
+    <p><strong>OpenCode Web Integration</strong> is a VSCode extension that integrates the <a
+        href="https://opencode.ai">OpenCode</a> AI coding assistant into VSCode.</p>
+    <p>It is not a standalone AI tool, but rather a VSCode frontend for <strong>OpenCode</strong>. The relationship
+      between the two is as follows:</p>
     <ul>
-      <li>Write and understand code quickly</li>
-      <li>Automatically generate code snippets</li>
-      <li>Provide intelligent code completion</li>
-      <li>Answer programming questions</li>
+      <li><strong>OpenCode</strong> (<code>opencode-ai</code>) — An open-source AI coding assistant that provides a TUI
+        terminal interface and web service, handling the actual AI conversations and code processing.</li>
+      <li><strong>OpenCode Web Integration</strong> (this extension) — Embeds OpenCode's web interface into the VSCode
+        sidebar, allowing you to use all of OpenCode's features without leaving your editor.</li>
     </ul>
   </div>
 
   <div class="section">
-    <h2>Installation Guide</h2>
+    <h2>OpenCode Installation Guide</h2>
 
     <h3>System Requirements</h3>
     <ul>
@@ -139,7 +157,8 @@
     <p>A: Please check if port 4099 is occupied, or try modifying the port number in the configuration.</p>
 
     <h3>Q: What to do if connection times out?</h3>
-    <p>A: Try clicking the "Restart Process" button in the top bar, which will kill the opencode process and restart it.</p>
+    <p>A: Try clicking the "Restart Process" button in the top bar, which will kill the opencode process and restart it.
+    </p>
 
     <h3>Q: OpenCode is installed, but still shows "OpenCode not installed"?</h3>
     <p>A: This may be due to installation status caching. Please try:</p>
@@ -158,7 +177,8 @@
     </ol>
 
     <h3>Q: Cannot copy/paste content in OpenCode Web mode?</h3>
-    <p>A: Due to browser cross-origin security restrictions (iframe embedding), the copy/paste function cannot work properly.</p>
+    <p>A: Due to browser cross-origin security restrictions (iframe embedding), the copy/paste function cannot work
+      properly.</p>
     <p><strong>Solution:</strong></p>
     <p>Please use OpenCode TUI in a standalone terminal (click "<strong>Open TUI Terminal</strong>" in the sidebar).</p>
   </div>
@@ -182,4 +202,5 @@
     </ol>
   </div>
 </body>
+
 </html>
