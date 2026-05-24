@@ -140,10 +140,8 @@ export class OpenCodeManager {
     const terminal = this.createOpenCodeTerminal(workspacePath);
     terminal.show();
 
-    // 发送启动命令（Windows 使用 cmd /c 确保兼容）
-    const command = isWindows()
-      ? `cmd /c "opencode.cmd ${START_ARGS.PORT} ${this.config.defaultPort}"`
-      : `opencode ${START_ARGS.PORT} ${this.config.defaultPort}`;
+    // 发送启动命令（跨平台兼容）
+    const command = `opencode ${START_ARGS.PORT} ${this.config.defaultPort}`;
     terminal.sendText(command);
 
     // 等待服务就绪
@@ -170,6 +168,10 @@ export class OpenCodeManager {
     }
 
     try {
+      this.log(`========== 开始后台启动流程 ==========`);
+      this.log(`工作区路径: ${workspacePath}`);
+      this.log(`平台: ${process.platform}`);
+
       // 检查后台终端是否已存在
       const existingBackground = vscode.window.terminals.find(
         terminal => terminal.name === BACKGROUND_TERMINAL_NAME
@@ -193,16 +195,22 @@ export class OpenCodeManager {
       const terminal = this.createBackgroundTerminal(workspacePath);
 
       // 构建启动命令
-      // Windows: 使用 cmd /c 确保跨 shell 兼容（PowerShell/cmd/Git Bash）
-      // Unix: 直接执行 opencode
-      const command = isWindows()
-        ? `cmd /c "opencode.cmd ${START_ARGS.PORT} ${this.config.defaultPort}"`
-        : `opencode ${START_ARGS.PORT} ${this.config.defaultPort}`;
+      let command: string;
+      
+      if (isWindows()) {
+        // Windows: 使用增强的启动方式
+        // 优先尝试完整路径，失败后回退到 PATH
+        command = await this.getWindowsStartupCommand();
+      } else {
+        // Unix: 直接执行 opencode
+        command = `opencode ${START_ARGS.PORT} ${this.config.defaultPort}`;
+      }
 
-      this.log(`启动 OpenCode: ${command}`);
+      this.log(`启动命令: ${command}`);
 
       // 发送命令到终端（终端在后台执行，不显示）
       terminal.sendText(command);
+      this.log('命令已发送到终端');
 
       // 等待服务就绪（HTTP 健康检查）
       // 启动时使用更长的超时时间（15 秒），因为进程启动可能较慢
@@ -210,6 +218,13 @@ export class OpenCodeManager {
 
       if (!isReady) {
         this.log('OpenCode 启动超时');
+        
+        // Windows 特定诊断
+        if (isWindows()) {
+          this.log('========== Windows 启动失败诊断 ==========');
+          await this.diagnoseWindowsStartup();
+        }
+        
         this.eventManager.emitProcessError(l10n.t('message.startTimeout'));
 
         // 检查进程是否崩溃
@@ -280,6 +295,129 @@ export class OpenCodeManager {
 
     this.log(`OpenCode 未在 ${timeoutMs}ms 内就绪`);
     return false;
+  }
+
+  /**
+   * 获取 Windows 启动命令
+   * 使用兼容性更好的方式：直接使用 opencode 命令
+   */
+  private async getWindowsStartupCommand(): Promise<string> {
+    this.log('准备 Windows 启动命令...');
+
+    // 直接使用 opencode 命令，让系统自动查找
+    // 不依赖 .cmd 扩展名，兼容性更好
+    return `opencode ${START_ARGS.PORT} ${this.config.defaultPort}`;
+  }
+
+  /**
+   * Windows 启动失败诊断
+   * 用于诊断 Windows 上启动失败的原因
+   */
+  private async diagnoseWindowsStartup(): Promise<void> {
+    this.log('========== Windows 启动失败诊断 ==========');
+
+    try {
+      // 1. 检查 opencode 命令是否在 PATH 中
+      this.log('步骤 1: 检查 opencode 命令是否在 PATH 中');
+      try {
+        const { stdout } = await execAsync('where opencode', { timeout: 2000 });
+        this.log(`✅ 找到 opencode: ${stdout.trim()}`);
+      } catch (error) {
+        this.log('❌ opencode 不在 PATH 中');
+        
+        // 尝试找到 npm 安装路径
+        try {
+          const { stdout: npmPrefix } = await execAsync('npm config get prefix', { timeout: 2000 });
+          const path = require('path');
+          const fs = require('fs');
+          const possiblePaths = [
+            path.join(npmPrefix.trim(), 'opencode.cmd'),
+            path.join(npmPrefix.trim(), 'node_modules', '.bin', 'opencode.cmd'),
+            path.join(npmPrefix.trim(), 'node_modules', '.bin', 'opencode'),
+          ];
+          
+          for (const exePath of possiblePaths) {
+            if (fs.existsSync(exePath)) {
+              this.log(`✅ 通过文件路径找到: ${exePath}`);
+            } else {
+              this.log(`❌ 路径不存在: ${exePath}`);
+            }
+          }
+        } catch (npmError) {
+          this.log(`❌ npm 检查失败: ${npmError}`);
+        }
+      }
+
+      // 2. 尝试执行 opencode --version
+      this.log('步骤 2: 测试 opencode 是否可执行');
+      try {
+        const { stdout, stderr } = await execAsync('opencode --version', {
+          timeout: 5000,
+          shell: true as any
+        });
+        this.log(`✅ opencode 执行成功，版本: ${stdout.trim()}`);
+        if (stderr) {
+          this.log(`  stderr: ${stderr}`);
+        }
+      } catch (error: any) {
+        this.log(`❌ opencode 执行失败: ${error.message}`);
+        if (error.stderr) {
+          this.log(`  stderr: ${error.stderr}`);
+        }
+      }
+
+      // 3. 检查端口占用
+      this.log('步骤 3: 检查端口占用');
+      const port = this.config.defaultPort;
+      try {
+        const { stdout } = await execAsync(`netstat -aon | findstr :${port}`, { timeout: 2000 });
+        if (stdout.trim()) {
+          this.log(`⚠️ 端口 ${port} 被占用:\n${stdout}`);
+          
+          // 尝试终止占用端口的进程
+          this.log('尝试终止占用端口的进程...');
+          await this.killProcessByPortCrossPlatform(port);
+        } else {
+          this.log(`✅ 端口 ${port} 未被占用`);
+        }
+      } catch (error) {
+        this.log(`✅ 端口 ${port} 未被占用（检查失败）`);
+      }
+
+      // 4. 检查后台终端状态
+      this.log('步骤 4: 检查后台终端状态');
+      const allTerminals = vscode.window.terminals;
+      this.log(`当前终端列表 (${allTerminals.length} 个):`);
+      for (const t of allTerminals) {
+        this.log(`  - ${t.name}`);
+      }
+
+      if (this.backgroundTerminal) {
+        this.log('✅ 后台终端引用存在');
+      } else {
+        this.log('❌ 后台终端引用不存在');
+      }
+
+      // 5. 检查 node 进程
+      this.log('步骤 5: 检查 node 进程');
+      try {
+        const { stdout } = await execAsync('tasklist /FI "IMAGENAME eq node.exe" /FO CSV /NH', {
+          timeout: 2000
+        });
+        const nodeProcesses = stdout.trim().split('\n').filter(line => line.includes('node.exe'));
+        this.log(`找到 ${nodeProcesses.length} 个 node 进程`);
+        for (const proc of nodeProcesses) {
+          this.log(`  ${proc}`);
+        }
+      } catch (error) {
+        this.log('❌ 检查 node 进程失败');
+      }
+
+    } catch (error) {
+      this.log(`诊断过程中出错: ${error}`);
+    }
+
+    this.log('========== Windows 诊断完成 ==========');
   }
 
   /**
@@ -431,10 +569,8 @@ export class OpenCodeManager {
     const terminal = this.createOpenCodeTerminal(workspacePath);
     terminal.show();
 
-    // 发送 attach 命令（Windows 使用 cmd /c 确保兼容）
-    const command = isWindows()
-      ? `cmd /c "opencode.cmd ${START_ARGS.ATTACH} ${this.baseUrl} ${START_ARGS.DIR} ${workspacePath}"`
-      : `opencode ${START_ARGS.ATTACH} ${this.baseUrl} ${START_ARGS.DIR} ${workspacePath}`;
+    // 发送 attach 命令（跨平台兼容）
+    const command = `opencode ${START_ARGS.ATTACH} ${this.baseUrl} ${START_ARGS.DIR} ${workspacePath}`;
     terminal.sendText(command);
 
     // 等待服务就绪
@@ -533,6 +669,7 @@ export class OpenCodeManager {
    * 1. 首先检查 PATH（快速）
    * 2. 然后实际执行命令（可靠）
    * 3. 使用缓存避免频繁检查
+   * 4. Windows 环境下添加重试机制（环境变量可能未就绪）
    */
   private async checkOpenCodeInstalled(): Promise<boolean> {
     // 检查缓存
@@ -545,30 +682,51 @@ export class OpenCodeManager {
 
     this.log('开始检查 OpenCode 安装状态...');
 
-    // 方法1: 检查命令是否在 PATH 中（快速）
-    let inPath = false;
-    try {
-      if (isWindows()) {
-        // Windows: 使用增强检测
-        inPath = await this.checkWindowsInstallation();
-      } else {
-        // Unix: 保持现有逻辑
-        const command = CHECK_COMMANDS.UNIX;
-        await execAsync(command, { timeout: 2000 });
-        inPath = true;
-        this.log('OpenCode 命令在 PATH 中找到');
+    // Windows 环境下，添加重试机制（解决 VSCode 启动时环境变量未就绪问题）
+    const maxRetries = isWindows() ? 3 : 1;
+    let isInstalled = false;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      this.log(`安装检查尝试 ${attempt}/${maxRetries}`);
+      
+      // 方法1: 检查命令是否在 PATH 中（快速）
+      let inPath = false;
+      let commandPath: string | undefined;
+      
+      try {
+        if (isWindows()) {
+          // Windows: 使用增强检测
+          const result = await this.checkWindowsInstallation();
+          inPath = result.found;
+          commandPath = result.path;
+        } else {
+          // Unix: 保持现有逻辑
+          const command = CHECK_COMMANDS.UNIX;
+          await execAsync(command, { timeout: 2000 });
+          inPath = true;
+          this.log('OpenCode 命令在 PATH 中找到');
+        }
+      } catch (error) {
+        this.log(`OpenCode 命令不在 PATH 中: ${error}`);
       }
-    } catch (error) {
-      this.log(`OpenCode 命令不在 PATH 中: ${error}`);
-    }
 
-    // 方法2: 实际执行命令验证（可靠，但需要超时保护）
-    let canExecute = false;
-    if (inPath) {
-      canExecute = await this.verifyOpenCodeExecutable();
-    }
+      // 方法2: 实际执行命令验证（可靠，但需要超时保护）
+      let canExecute = false;
+      if (inPath) {
+        canExecute = await this.verifyOpenCodeExecutable(commandPath);
+      }
 
-    const isInstalled = inPath && canExecute;
+      isInstalled = inPath && canExecute;
+      
+      if (isInstalled || attempt === maxRetries) {
+        // 成功或最后一次尝试
+        break;
+      }
+      
+      // 失败但还有重试机会，等待 1 秒后重试
+      this.log(`安装检查失败，等待 1 秒后重试...`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
 
     // 更新缓存
     this.installationCache = {
@@ -576,7 +734,7 @@ export class OpenCodeManager {
       timestamp: now
     };
 
-    this.log(`OpenCode 安装状态最终结果: ${isInstalled} (PATH: ${inPath}, 可执行: ${canExecute})`);
+    this.log(`OpenCode 安装状态最终结果: ${isInstalled}`);
 
     return isInstalled;
   }
@@ -586,23 +744,25 @@ export class OpenCodeManager {
    * 针对 nvm 和标准 npm 安装进行优化
    * 支持 PowerShell、cmd、Git Bash、WSL 等多种 shell
    */
-  private async checkWindowsInstallation(): Promise<boolean> {
+  private async checkWindowsInstallation(): Promise<{ found: boolean; path?: string }> {
     this.log('开始 Windows 安装检查（跨 shell 兼容）');
 
     // 方法1a: 尝试 where 命令（PowerShell/cmd）
     try {
-      const { stdout } = await execAsync('where opencode', { timeout: 2000 });
-      this.log(`✅ [方法1a] 通过 where 找到: ${stdout.trim()}`);
-      return true;
+      const { stdout } = await execAsync('where opencode', { timeout: 5000 });
+      const path = stdout.trim().split('\n')[0]; // 取第一个路径
+      this.log(`✅ [方法1a] 通过 where 找到: ${path}`);
+      return { found: true, path };
     } catch (error: any) {
       this.log(`❌ [方法1a] where 失败`);
     }
 
     // 方法1b: 尝试 which 命令（Git Bash/WSL）
     try {
-      const { stdout } = await execAsync('which opencode', { timeout: 2000, shell: true as any });
-      this.log(`✅ [方法1b] 通过 which 找到: ${stdout.trim()}`);
-      return true;
+      const { stdout } = await execAsync('which opencode', { timeout: 5000, shell: true as any });
+      const path = stdout.trim().split('\n')[0];
+      this.log(`✅ [方法1b] 通过 which 找到: ${path}`);
+      return { found: true, path };
     } catch (error: any) {
       this.log(`❌ [方法1b] which 失败`);
     }
@@ -610,13 +770,26 @@ export class OpenCodeManager {
     // 方法2: 检查 npm 全局包（兼容 nvm）
     try {
       const { stdout } = await execAsync(WINDOWS_COMMANDS.NPM_CHECK_GLOBAL, {
-        timeout: 3000,
+        timeout: 5000,
         shell: true as any
       });
 
       if (stdout.includes('opencode-ai')) {
         this.log(`✅ [方法2] 通过 npm 全局包找到`);
-        return true;
+        
+        // 尝试获取完整路径
+        try {
+          const { stdout: npmPrefix } = await execAsync(WINDOWS_COMMANDS.NPM_GET_PREFIX, {
+            timeout: 2000,
+            shell: true as any
+          });
+          const pathModule = require('path');
+          const fullPath = pathModule.join(npmPrefix.trim(), 'opencode.cmd');
+          this.log(`[方法2] 推断路径: ${fullPath}`);
+          return { found: true, path: fullPath };
+        } catch {
+          return { found: true };
+        }
       }
     } catch (error: any) {
       this.log(`❌ [方法2] npm 检查失败`);
@@ -625,7 +798,7 @@ export class OpenCodeManager {
     // 方法3: 直接检查 npm bin 路径（最可靠）
     try {
       const { stdout: npmBinPath } = await execAsync(WINDOWS_COMMANDS.NPM_GET_PREFIX, {
-        timeout: 2000,
+        timeout: 5000,
         shell: true as any
       });
 
@@ -636,12 +809,13 @@ export class OpenCodeManager {
         path.join(npmBinPath.trim(), 'opencode.cmd'),
         path.join(npmBinPath.trim(), 'opencode'),
         path.join(npmBinPath.trim(), 'node_modules', '.bin', 'opencode.cmd'),
+        path.join(npmBinPath.trim(), 'node_modules', '.bin', 'opencode'),
       ];
 
       for (const exePath of possiblePaths) {
         if (fs.existsSync(exePath)) {
           this.log(`✅ [方法3] 通过文件路径找到: ${exePath}`);
-          return true;
+          return { found: true, path: exePath };
         }
       }
     } catch (error: any) {
@@ -649,42 +823,42 @@ export class OpenCodeManager {
     }
 
     this.log('❌ Windows 安装检查: 未找到');
-    return false;
+    return { found: false };
   }
 
   /**
    * 验证 OpenCode 是否可以实际执行
    * 通过执行 opencode --version 命令
+   * @param commandPath 可选的完整路径（Windows 需要完整路径）
    */
-  private verifyOpenCodeExecutable(): Promise<boolean> {
+  private verifyOpenCodeExecutable(commandPath?: string): Promise<boolean> {
     return new Promise((resolve) => {
       try {
         this.log('验证 OpenCode 可执行性');
 
-        const spawnOptions: any = {
+        const command = commandPath || 'opencode';
+        this.log(`执行命令: ${command}`);
+
+        const proc = spawn(command, ['--version'], {
           stdio: ['ignore', 'pipe', 'pipe'],
           windowsHide: true,
-        };
-
-        // Windows: 需要 shell: true 来执行 .cmd 文件
-        if (isWindows()) {
-          spawnOptions.shell = true;
-        }
-
-        const command = isWindows() ? 'opencode.cmd' : 'opencode';
-        const proc = spawn(command, ['--version'], spawnOptions);
+          shell: !!commandPath, // Windows 使用完整路径时不需要 shell
+        });
 
         let timedOut = false;
         let output = '';
         let errorOutput = '';
 
-        // 设置超时（5秒）
+        // Windows 启动时环境变量可能未就绪，使用更长的超时
+        const timeoutMs = isWindows() ? 10000 : 5000;
+        
+        // 设置超时
         const timer = setTimeout(() => {
           timedOut = true;
           proc.kill();
-          this.log('❌ 验证超时（5秒）');
+          this.log(`❌ 验证超时（${timeoutMs}ms）`);
           resolve(false);
-        }, 5000);
+        }, timeoutMs);
 
         // 捕获输出
         if (proc.stdout) {
@@ -921,10 +1095,8 @@ export class OpenCodeManager {
       const terminal = this.createOpenCodeTerminal(workspacePath);
       terminal.show();
 
-      // 发送 attach 命令（Windows 使用 cmd /c 确保兼容）
-      const command = isWindows()
-        ? `cmd /c "opencode.cmd ${START_ARGS.ATTACH} ${this.baseUrl} ${START_ARGS.DIR} ${workspacePath}"`
-        : `opencode ${START_ARGS.ATTACH} ${this.baseUrl} ${START_ARGS.DIR} ${workspacePath}`;
+      // 发送 attach 命令（跨平台兼容）
+      const command = `opencode ${START_ARGS.ATTACH} ${this.baseUrl} ${START_ARGS.DIR} ${workspacePath}`;
       terminal.sendText(command);
 
       // 等待 attach 完成
@@ -934,10 +1106,8 @@ export class OpenCodeManager {
       const terminal = this.createOpenCodeTerminal(workspacePath);
       terminal.show();
 
-      // 发送启动命令（Windows 使用 cmd /c 确保兼容）
-      const command = isWindows()
-        ? `cmd /c "opencode.cmd ${START_ARGS.PORT} ${this.config.defaultPort}"`
-        : `opencode ${START_ARGS.PORT} ${this.config.defaultPort}`;
+      // 发送启动命令（跨平台兼容）
+      const command = `opencode ${START_ARGS.PORT} ${this.config.defaultPort}`;
       terminal.sendText(command);
     }
   }

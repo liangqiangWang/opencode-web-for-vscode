@@ -113,8 +113,12 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
     this.setState('loading', l10n.t('status.checkingStatus'));
 
     try {
-      // 单次状态检查（5 秒超时）
-      const result = await this.checkStatusWithTimeout(5000);
+      // Windows 环境下使用更长的超时（环境变量可能未就绪）
+      const isWindows = process.platform === 'win32';
+      const timeout = isWindows ? 10000 : 5000;
+      
+      // 单次状态检查
+      const result = await this.checkStatusWithTimeout(timeout);
 
       // 更新状态
       this.currentState = result.state;
