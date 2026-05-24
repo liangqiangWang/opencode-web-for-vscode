@@ -23,6 +23,7 @@ const WEBVIEW_VIEW_TYPE = 'opencodeWebview';
 type WebviewState =
   | 'initializing'    // 初始化中
   | 'ready'          // OpenCode 运行中
+  | 'idle'           // 空闲（未启动）
   | 'error'          // 错误状态
   | 'notInstalled'   // 未安装
   | 'restarting';    // 重启中
@@ -75,26 +76,6 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
     // 不再监听 OpenCodeManager 的事件
     // 所有状态通过 HTTP 健康检查获取
     this.log('事件监听器设置完成（不依赖 OpenCodeManager 事件）');
-  }
-
-  /**
-   * 映射 OpenCodeStatus 到 WebviewState
-   */
-  private mapOpenCodeStatusToWebviewState(status: OpenCodeStatus): WebviewState | null {
-    switch (status) {
-      case OpenCodeStatus.Running:
-        return 'ready';
-      case OpenCodeStatus.NotRunning:
-        return 'error';
-      case OpenCodeStatus.NotInstalled:
-        return 'notInstalled';
-      case OpenCodeStatus.Restarting:
-        return 'restarting';
-      case OpenCodeStatus.Error:
-        return 'error';
-      default:
-        return null;
-    }
   }
 
   /**
@@ -162,7 +143,7 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
         if (connected) {
           return { state: 'ready', message: '' };
         }
-        return { state: 'error', message: l10n.t('status.notRunning') };
+        return { state: 'idle', message: l10n.t('status.notRunning') };
     }
   }
 
@@ -173,6 +154,9 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
     switch (result.state) {
       case 'ready':
         this.setState('ready', '');
+        break;
+      case 'idle':
+        this.setState('idle', result.message || l10n.t('status.notRunning'));
         break;
       case 'error':
         this.setState('error', result.message || l10n.t('status.error'));
@@ -574,6 +558,12 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
       color: var(--vscode-errorForeground);
     }
 
+    .idle-icon-svg {
+      width: 32px;
+      height: 32px;
+      color: var(--vscode-button-background);
+    }
+
     /* 错误标题 */
     .error-title {
       font-size: 16px;
@@ -772,6 +762,38 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
             </div>
             <h2 class="error-title">\${t('status.error')}</h2>
             <p class="error-description">\${message || t('message.serviceNotRunning')}</p>
+            <button class="action-button" id="startButton">
+              <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+              \${t('button.start')}
+            </button>
+          </div>
+        \`;
+        const startBtn = document.getElementById('startButton');
+        if (startBtn) {
+          startBtn.addEventListener('click', () => {
+            startBtn.disabled = true;
+            startBtn.innerHTML = \`
+              <svg class="spin" viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor">
+                <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="32" stroke-linecap="round"/>
+              </svg>
+              \${t('button.starting')}
+            \`;
+            vscode.postMessage({ type: 'startOpencode' });
+          });
+        }
+      } else if (state === 'idle') {
+        container.innerHTML = \`
+          <div class="modern-error-container">
+            <div class="icon-wrapper">
+              <svg class="idle-icon-svg" viewBox="0 0 48 48">
+                <circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="2"/>
+                <path d="M20 14 L34 24 L20 34 Z" fill="currentColor"/>
+              </svg>
+            </div>
+            <h2 class="error-title">\${t('status.readyToStart')}</h2>
+            <p class="error-description">\${message || t('message.clickToStart')}</p>
             <button class="action-button" id="startButton">
               <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor">
                 <path d="M8 5v14l11-7z"/>
@@ -1070,8 +1092,8 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
         this.setState('ready', '');
       } else {
         this.log('刷新：健康检查失败，服务未就绪');
-        this.currentState = 'error';
-        this.setState('error', l10n.t('status.notRunning'));
+        this.currentState = 'idle';
+        this.setState('idle', l10n.t('status.notRunning'));
       }
     } catch (error) {
       this.log(`刷新过程中出错: ${error}`);
