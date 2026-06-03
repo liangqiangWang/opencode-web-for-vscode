@@ -34,6 +34,13 @@ export class ConfigurationService {
   }
 
   /**
+   * 获取关闭 VSCode 时是否终止进程
+   */
+  public getKillOnExit(): boolean {
+    return this.getConfig(CONFIG_KEYS.KILL_ON_EXIT, DEFAULT_CONFIG.KILL_ON_EXIT);
+  }
+
+  /**
    * 获取配置值
    */
   private getConfig<T>(key: string, defaultValue: T): T {

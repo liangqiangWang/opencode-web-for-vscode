@@ -11,6 +11,7 @@
   "command.showHelp.title": "ヘルプを表示",
   "command.reportIssue.title": "問題を報告",
   "command.changeLanguage.title": "言語を変更",
+  "command.openSettings.title": "設定を開く",
   "submenu.moreMenu.label": "その他の操作",
   "submenu.processManagementMenu.label": "プロセス管理",
   "configuration.title": "OpenCode",
@@ -21,5 +22,6 @@
   "config.language.zh-cn.description": "简体中文",
   "config.language.en.description": "English",
   "config.language.ja.description": "日本語",
-  "config.language.ko.description": "한국어"
+  "config.language.ko.description": "한국어",
+  "config.killOnExit.description": "VSCode を閉じる時に OpenCode プロセスを終了する"
 }

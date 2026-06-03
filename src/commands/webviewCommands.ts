@@ -136,6 +136,13 @@ export function registerWebviewCommands(
     })
   );
 
+  // 打开设置
+  context.subscriptions.push(
+    vscode.commands.registerCommand('opencode-web.openSettings', () => {
+      vscode.commands.executeCommand('workbench.action.openSettings', 'opencode');
+    })
+  );
+
   // 调试：显示当前语言状态
   context.subscriptions.push(
     vscode.commands.registerCommand('opencode-web.debugLanguage', () => {

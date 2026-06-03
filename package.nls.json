@@ -11,6 +11,7 @@
   "command.showHelp.title": "View Help",
   "command.reportIssue.title": "Report Issue",
   "command.changeLanguage.title": "Change Language",
+  "command.openSettings.title": "Open Settings",
   "command.debugStatus.title": "Debug: Diagnose Status",
   "command.debugLanguage.title": "Debug: Language Status",
   "command.forceReady.title": "Debug: Force Ready State",
@@ -26,5 +27,6 @@
   "config.language.zh-cn.description": "Simplified Chinese",
   "config.language.en.description": "English",
   "config.language.ja.description": "Japanese",
-  "config.language.ko.description": "Korean"
+  "config.language.ko.description": "Korean",
+  "config.killOnExit.description": "Terminate OpenCode process when closing VSCode"
 }

@@ -6,12 +6,14 @@
 export const CONFIG_KEYS = {
   PORT: 'opencode.port',
   TIMEOUT: 'opencode.timeout',
+  KILL_ON_EXIT: 'opencode.killOnExit',
 } as const;
 
 // 默认配置值
 export const DEFAULT_CONFIG = {
   PORT: 4099,
   TIMEOUT: 5000,
+  KILL_ON_EXIT: true,
 } as const;
 
 // 终端名称

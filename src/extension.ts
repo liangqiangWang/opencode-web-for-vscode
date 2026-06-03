@@ -85,8 +85,16 @@ export function activate(context: vscode.ExtensionContext) {
 export async function deactivate() {
   console.log('OpenCode Integration extension is now deactivated!');
 
-  // 清理后台终端
+  // 清理后台终端（根据配置决定）
   if (openCodeManager) {
-    await openCodeManager.cleanup();
+    const configService = ConfigurationService.getInstance();
+    const shouldKill = configService.getKillOnExit();
+
+    if (shouldKill) {
+      await openCodeManager.cleanup();
+      console.log('OpenCode process terminated on exit');
+    } else {
+      console.log('OpenCode process left running (killOnExit = false)');
+    }
   }
 }
