@@ -19,7 +19,7 @@
   "command.killAllProcesses.title": "调试：终止所有进程",
   "submenu.moreMenu.label": "更多操作",
   "submenu.processManagementMenu.label": "进程管理",
-  "configuration.title": "OpenCode",
+  "configuration.title": "OpenCode-web",
   "config.port.description": "OpenCode 服务器端口",
   "config.timeout.description": "连接超时（毫秒）",
   "config.language.description": "扩展语言",

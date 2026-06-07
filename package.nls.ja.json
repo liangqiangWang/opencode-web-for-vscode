@@ -14,7 +14,7 @@
   "command.openSettings.title": "設定を開く",
   "submenu.moreMenu.label": "その他の操作",
   "submenu.processManagementMenu.label": "プロセス管理",
-  "configuration.title": "OpenCode",
+  "configuration.title": "OpenCode-web",
   "config.port.description": "OpenCode サーバーポート",
   "config.timeout.description": "接続タイムアウト（ミリ秒）",
   "config.language.description": "拡張機能の言語",

@@ -301,7 +301,7 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
           break;
 
         case 'changeLanguage':
-          vscode.commands.executeCommand('workbench.action.openSettings', 'opencode.language');
+          vscode.commands.executeCommand('workbench.action.openSettings', 'opencode-web.language');
           break;
 
         default:

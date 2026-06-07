@@ -19,7 +19,7 @@
   "command.killAllProcesses.title": "Debug: Kill All Processes",
   "submenu.moreMenu.label": "More Actions",
   "submenu.processManagementMenu.label": "Process Management",
-  "configuration.title": "OpenCode",
+  "configuration.title": "OpenCode-web",
   "config.port.description": "OpenCode server port",
   "config.timeout.description": "Connection timeout (ms)",
   "config.language.description": "Extension language",

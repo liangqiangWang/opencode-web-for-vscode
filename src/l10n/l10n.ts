@@ -193,7 +193,7 @@ class L10n {
    */
   private detectLanguage(): string {
     // 1. 检查用户配置
-    const config = vscode.workspace.getConfiguration('opencode');
+    const config = vscode.workspace.getConfiguration('opencode-web');
     const userLanguage = config.get<string>('language');
 
     if (userLanguage && userLanguage !== 'auto') {
