@@ -12,7 +12,8 @@
     "restarting": "正在重启 OpenCode...",
     "loading": "加载中...",
     "refreshing": "正在刷新...",
-    "disconnected": "连接已断开"
+    "disconnected": "连接已断开",
+    "externalProcessRunning": "检测到外部 OpenCode 进程"
   },
   "message": {
     "noActiveEditor": "没有活动的编辑器",
@@ -48,7 +49,8 @@
     "unknownState": "未知的 OpenCode 状态",
     "connecting": "正在连接 OpenCode...",
     "connected": "已连接到 OpenCode",
-    "configMigrated": "已从旧版本迁移设置（{0} 项）"
+    "configMigrated": "已从旧版本迁移设置（{0} 项）",
+    "connectToExternalProcess": "连接到现有的 OpenCode 进程"
   },
   "description": {
     "currentStatus": "当前状态",
@@ -95,6 +97,8 @@
     "ok": "确定",
     "yes": "是",
     "no": "否",
-    "changeLanguage": "切换语言"
+    "changeLanguage": "切换语言",
+    "connectToProcess": "连接到进程",
+    "connecting": "正在连接..."
   }
 }

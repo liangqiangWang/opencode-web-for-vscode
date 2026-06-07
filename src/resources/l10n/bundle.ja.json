@@ -12,7 +12,8 @@
     "restarting": "OpenCode を再起動中...",
     "loading": "読み込み中...",
     "refreshing": "更新中...",
-    "disconnected": "接続が失われました"
+    "disconnected": "接続が失われました",
+    "externalProcessRunning": "外部 OpenCode プロセスが実行中"
   },
   "message": {
     "noActiveEditor": "アクティブなエディタがありません",
@@ -48,7 +49,8 @@
     "unknownState": "不明な OpenCode の状態",
     "connecting": "OpenCode に接続中...",
     "connected": "OpenCode に接続しました",
-    "configMigrated": "旧バージョンから設定を移行しました（{0} 件）"
+    "configMigrated": "旧バージョンから設定を移行しました（{0} 件）",
+    "connectToExternalProcess": "既存の OpenCode プロセスに接続"
   },
   "description": {
     "currentStatus": "現在の状態",
@@ -95,6 +97,8 @@
     "ok": "OK",
     "yes": "はい",
     "no": "いいえ",
-    "changeLanguage": "言語を変更"
+    "changeLanguage": "言語を変更",
+    "connectToProcess": "プロセスに接続",
+    "connecting": "接続中..."
   }
 }

@@ -936,6 +936,27 @@ export class OpenCodeManager {
   }
 
   /**
+   * 检查是否有外部 opencode 进程在运行
+   * 即端口健康，但没有 VSCode 后台终端
+   * @returns 是否有外部进程运行
+   */
+  async hasExternalOpenCodeProcess(): Promise<boolean> {
+    // 1. 检查端口健康
+    const portHealthy = await this.checkConnection(2000);
+    if (!portHealthy) {
+      return false;
+    }
+
+    // 2. 检查是否有 VSCode 创建的后台终端
+    const hasBackgroundTerminal = vscode.window.terminals.some(
+      terminal => terminal.name === BACKGROUND_TERMINAL_NAME
+    );
+
+    // 端口健康但没有后台终端 = 外部进程
+    return !hasBackgroundTerminal;
+  }
+
+  /**
    * 检查 OpenCode 连接状态（公共方法）
    * 使用健康检查端点进行连接验证
    * @param timeout 可选的超时时间（毫秒）

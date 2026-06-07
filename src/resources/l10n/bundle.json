@@ -12,7 +12,8 @@
     "restarting": "Restarting OpenCode...",
     "loading": "Loading...",
     "refreshing": "Refreshing...",
-    "disconnected": "Connection lost"
+    "disconnected": "Connection lost",
+    "externalProcessRunning": "External OpenCode Process Running"
   },
   "message": {
     "noActiveEditor": "No active editor",
@@ -48,7 +49,8 @@
     "unknownState": "Unknown OpenCode state",
     "connecting": "Connecting to OpenCode...",
     "connected": "Connected to OpenCode",
-    "configMigrated": "Settings migrated from old version ({0} settings)"
+    "configMigrated": "Settings migrated from old version ({0} settings)",
+    "connectToExternalProcess": "Connect to existing OpenCode process"
   },
   "description": {
     "currentStatus": "Current Status",
@@ -95,6 +97,8 @@
     "ok": "OK",
     "yes": "Yes",
     "no": "No",
-    "changeLanguage": "Change Language"
+    "changeLanguage": "Change Language",
+    "connectToProcess": "Connect to Process",
+    "connecting": "Connecting..."
   }
 }

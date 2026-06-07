@@ -21,12 +21,13 @@ const WEBVIEW_VIEW_TYPE = 'opencodeWebview';
  * Webview 状态枚举
  */
 type WebviewState =
-  | 'initializing'    // 初始化中
-  | 'ready'          // OpenCode 运行中
-  | 'idle'           // 空闲（未启动）
-  | 'error'          // 错误状态
-  | 'notInstalled'   // 未安装
-  | 'restarting';    // 重启中
+  | 'initializing'      // 初始化中
+  | 'ready'            // OpenCode 运行中
+  | 'idle'             // 空闲（未启动）
+  | 'externalRunning'  // 外部进程运行中
+  | 'error'            // 错误状态
+  | 'notInstalled'     // 未安装
+  | 'restarting';      // 重启中
 
 /**
  * OpenCode Webview 提供者类 - 重构版本
@@ -138,6 +139,13 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
         return { state: 'notInstalled', message: l10n.t('status.notInstalled') };
       case OpenCodeStatus.NotRunning:
       default:
+        // 检查是否有外部进程
+        const hasExternal = await this.openCodeManager.hasExternalOpenCodeProcess();
+        if (hasExternal) {
+          // 外部进程运行，直接显示 iframe
+          return { state: 'ready', message: '' };
+        }
+
         // 尝试连接检查以区分"未运行"和"超时"
         const connected = await this.openCodeManager.checkConnection(2000);
         if (connected) {
@@ -157,6 +165,9 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
         break;
       case 'idle':
         this.setState('idle', result.message || l10n.t('status.notRunning'));
+        break;
+      case 'externalRunning':
+        this.setState('externalRunning', result.message || l10n.t('status.externalProcessRunning'));
         break;
       case 'error':
         this.setState('error', result.message || l10n.t('status.error'));
@@ -265,6 +276,10 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
           await this.startOpenCode();
           break;
 
+        case 'connectToExternal':
+          await this.connectToExternalProcess();
+          break;
+
         case 'checkConnection':
           await this.checkAndNotifyConnection();
           break;
@@ -334,6 +349,27 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
       this.log(`启动失败: ${error}`);
       this.currentState = 'error';
       this.setState('error', l10n.t('message.startFailed', String(error)));
+    }
+  }
+
+  /**
+   * 连接到外部 OpenCode 进程
+   * 直接切换到 ready 状态，不创建 TUI 终端
+   */
+  private async connectToExternalProcess(): Promise<void> {
+    this.setState('loading', l10n.t('status.connecting'));
+
+    // 直接切换到 ready 状态，不执行 attach()
+    // 因为进程已经在运行，只是需要确认用户想要连接
+    const isConnected = await this.openCodeManager.checkConnection(2000);
+
+    if (isConnected) {
+      this.currentState = 'ready';
+      this.setState('ready', '');
+    } else {
+      // 连接检查失败，回退到 idle 状态
+      this.currentState = 'idle';
+      this.setState('idle', l10n.t('status.notRunning'));
     }
   }
 
@@ -813,6 +849,38 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
               \${t('button.starting')}
             \`;
             vscode.postMessage({ type: 'startOpencode' });
+          });
+        }
+      } else if (state === 'externalRunning') {
+        container.innerHTML = \`
+          <div class="modern-error-container">
+            <div class="icon-wrapper">
+              <svg class="external-icon-svg" viewBox="0 0 48 48">
+                <circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="2"/>
+                <path d="M18 12 L30 24 L18 36 Z" fill="currentColor"/>
+              </svg>
+            </div>
+            <h2 class="error-title">\${t('status.externalProcessRunning')}</h2>
+            <p class="error-description">\${t('message.connectToExternalProcess')}</p>
+            <button class="action-button" id="connectButton">
+              <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+              </svg>
+              \${t('button.connectToProcess')}
+            </button>
+          </div>
+        \`;
+        const connectBtn = document.getElementById('connectButton');
+        if (connectBtn) {
+          connectBtn.addEventListener('click', () => {
+            connectBtn.disabled = true;
+            connectBtn.innerHTML = \`
+              <svg class="spin" viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor">
+                <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="32" stroke-linecap="round"/>
+              </svg>
+              \${t('button.connecting')}
+            \`;
+            vscode.postMessage({ type: 'connectToExternal' });
           });
         }
       } else if (state === 'loading') {

@@ -8,6 +8,7 @@
 export type WebviewMessage =
   | { type: 'ready' }
   | { type: 'startOpencode' }
+  | { type: 'connectToExternal' }
   | { type: 'checkConnection' }
   | { type: 'setState'; state: string; message: string }
   | { type: 'openInBrowser' }
