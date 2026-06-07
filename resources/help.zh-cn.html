@@ -119,6 +119,19 @@
       <li>开始使用</li>
     </ol>
 
+    <h3>连接外部 OpenCode 进程</h3>
+    <p>如果你已经在终端或其他地方启动了 OpenCode 服务，可以让插件直接连接到该进程，无需重复启动。</p>
+    <ol>
+      <li>打开 VSCode 设置（<code>Ctrl+,</code> / <code>Cmd+,</code>）</li>
+      <li>搜索 <code>opencode-web.port</code>，将端口号修改为外部进程正在使用的端口</li>
+      <li>重新打开侧边栏的 OpenCode-Web 面板</li>
+    </ol>
+    <p>插件检测到对应端口已有 OpenCode 进程在运行时，会自动提示 <strong>"检测到外部 OpenCode 进程"</strong>，点击 <strong>"连接到进程"</strong> 即可直接加载 Web 界面。</p>
+
+    <div class="warning">
+      <strong>提示：</strong> 连接外部进程时不会创建 TUI 终端，仅通过 Web 界面进行交互。
+    </div>
+
     <h3>发送代码到 OpenCode 终端</h3>
     <ol>
       <li>在编辑器中选中代码</li>

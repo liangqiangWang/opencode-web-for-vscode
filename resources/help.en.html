@@ -121,6 +121,19 @@
       <li>Start using it</li>
     </ol>
 
+    <h3>Connect to an External OpenCode Process</h3>
+    <p>If you have already started an OpenCode service in a terminal or elsewhere, the extension can connect directly to it without starting a new process.</p>
+    <ol>
+      <li>Open VSCode Settings (<code>Ctrl+,</code> / <code>Cmd+,</code>)</li>
+      <li>Search for <code>opencode-web.port</code> and change the port number to match the one used by the external process</li>
+      <li>Reopen the OpenCode-Web panel in the sidebar</li>
+    </ol>
+    <p>When the extension detects an OpenCode process already running on the configured port, it will display a prompt: <strong>"External OpenCode Process Running"</strong>. Click <strong>"Connect to Process"</strong> to load the web interface directly.</p>
+
+    <div class="warning">
+      <strong>Tip:</strong> When connecting to an external process, no TUI terminal is created — interaction is through the web interface only.
+    </div>
+
     <h3>Send Code to OpenCode Terminal</h3>
     <ol>
       <li>Select code in the editor</li>
