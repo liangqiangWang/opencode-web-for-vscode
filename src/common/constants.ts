@@ -8,6 +8,7 @@ export const CONFIG_KEYS = {
   TIMEOUT: 'opencode-web.timeout',
   KILL_ON_EXIT: 'opencode-web.killOnExit',
   LANGUAGE: 'opencode-web.language',
+  TERMINAL_STARTUP_DELAY: 'opencode-web.terminalStartupDelay',
 } as const;
 
 // 旧版本配置键（用于迁移）
@@ -16,6 +17,7 @@ export const LEGACY_CONFIG_KEYS = {
   TIMEOUT: 'opencode.timeout',
   KILL_ON_EXIT: 'opencode.killOnExit',
   LANGUAGE: 'opencode.language',
+  TERMINAL_STARTUP_DELAY: 'opencode.terminalStartupDelay',
 } as const;
 
 // 默认配置值
@@ -23,6 +25,7 @@ export const DEFAULT_CONFIG = {
   PORT: 4099,
   TIMEOUT: 5000,
   KILL_ON_EXIT: true,
+  TERMINAL_STARTUP_DELAY: 0,
 } as const;
 
 // 终端名称

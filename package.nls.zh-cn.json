@@ -28,5 +28,6 @@
   "config.language.en.description": "English",
   "config.language.ja.description": "日本語",
   "config.language.ko.description": "한국어",
-  "config.killOnExit.description": "关闭 VSCode 时终止 OpenCode 进程"
+  "config.killOnExit.description": "关闭 VSCode 时终止 OpenCode 进程",
+  "config.terminalStartupDelay.description": "终端启动延迟（毫秒）"
 }

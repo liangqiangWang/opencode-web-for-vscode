@@ -23,5 +23,6 @@
   "config.language.en.description": "English",
   "config.language.ja.description": "日本語",
   "config.language.ko.description": "한국어",
-  "config.killOnExit.description": "VSCode를 닫을 때 OpenCode 프로세스 종료"
+  "config.killOnExit.description": "VSCode를 닫을 때 OpenCode 프로세스 종료",
+  "config.terminalStartupDelay.description": "터미널 시작 지연(밀리초)"
 }

@@ -28,5 +28,6 @@
   "config.language.en.description": "English",
   "config.language.ja.description": "Japanese",
   "config.language.ko.description": "Korean",
-  "config.killOnExit.description": "Terminate OpenCode process when closing VSCode"
+  "config.killOnExit.description": "Terminate OpenCode process when closing VSCode",
+  "config.terminalStartupDelay.description": "Terminal startup delay (ms)"
 }

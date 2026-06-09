@@ -14,6 +14,8 @@ export interface OpenCodeConfig {
   maxRetries: number;
   /** 重试间隔（毫秒） */
   retryInterval: number;
+  /** 终端启动延迟（毫秒） */
+  terminalStartupDelay: number;
 }
 
 /**

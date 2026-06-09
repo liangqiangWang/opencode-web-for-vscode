@@ -137,7 +137,7 @@ export class OpenCodeManager {
     // vscode.window.showInformationMessage(l10n.t('status.starting'));
 
     // 创建终端
-    const terminal = this.createOpenCodeTerminal(workspacePath);
+    const terminal = await this.createOpenCodeTerminal(workspacePath);
     terminal.show();
 
     // 发送启动命令（跨平台兼容）
@@ -566,7 +566,7 @@ export class OpenCodeManager {
     }
 
     // 创建终端
-    const terminal = this.createOpenCodeTerminal(workspacePath);
+    const terminal = await this.createOpenCodeTerminal(workspacePath);
     terminal.show();
 
     // 发送 attach 命令（跨平台兼容）
@@ -1053,12 +1053,14 @@ export class OpenCodeManager {
   private loadConfig(): OpenCodeConfig {
     const port = this.configService.getPort();
     const timeout = this.configService.getTimeout();
+    const terminalStartupDelay = this.configService.getTerminalStartupDelay();
 
     return {
       defaultPort: port,
       healthCheckTimeout: timeout,
       maxRetries: 10,
-      retryInterval: 500
+      retryInterval: 500,
+      terminalStartupDelay
     };
   }
 
@@ -1113,7 +1115,7 @@ export class OpenCodeManager {
 
     if (isRunning) {
       // OpenCode 正在运行，创建新的 TUI 终端并 attach
-      const terminal = this.createOpenCodeTerminal(workspacePath);
+      const terminal = await this.createOpenCodeTerminal(workspacePath);
       terminal.show();
 
       // 发送 attach 命令（跨平台兼容）
@@ -1124,7 +1126,7 @@ export class OpenCodeManager {
       await new Promise(resolve => setTimeout(resolve, 2000));
     } else {
       // OpenCode 未运行，创建新的 TUI 终端并启动
-      const terminal = this.createOpenCodeTerminal(workspacePath);
+      const terminal = await this.createOpenCodeTerminal(workspacePath);
       terminal.show();
 
       // 发送启动命令（跨平台兼容）
@@ -1138,7 +1140,7 @@ export class OpenCodeManager {
    * @param workspacePath 工作区路径
    * @returns 终端实例
    */
-  private createOpenCodeTerminal(workspacePath: string): vscode.Terminal {
+  private async createOpenCodeTerminal(workspacePath: string): Promise<vscode.Terminal> {
     const terminal = vscode.window.createTerminal({
       name: TERMINAL_NAME,
       cwd: workspacePath,
@@ -1159,6 +1161,11 @@ export class OpenCodeManager {
 
     // 保存终端引用
     this.terminal = terminal;
+
+    // 等待终端初始化完成
+    if (this.config.terminalStartupDelay > 0) {
+      await new Promise(resolve => setTimeout(resolve, this.config.terminalStartupDelay));
+    }
 
     return terminal;
   }

@@ -23,11 +23,18 @@ export function registerAppendCodeCommand(
       return;
     }
 
-    const { selectedText, absolutePath } = data;
+    const { selectedText, absolutePath, startLine, endLine } = data;
+    let lineRange = '';
+    if (startLine) {
+      lineRange = `${startLine}`
+      if (endLine) {
+        lineRange += `-${endLine}`
+      }
+    }
 
     const text = `
 ${selectedText ? selectedText + "\n" : ""}
-File: ${absolutePath}
+File: ${absolutePath}${lineRange ? "\nLine: " + lineRange : ""}
     `;
 
     console.log("Append prompt to OpenCode TUI:", text);

@@ -40,6 +40,7 @@ export class ConfigurationService {
       { oldKey: LEGACY_CONFIG_KEYS.TIMEOUT, newKey: CONFIG_KEYS.TIMEOUT, defaultValue: DEFAULT_CONFIG.TIMEOUT },
       { oldKey: LEGACY_CONFIG_KEYS.KILL_ON_EXIT, newKey: CONFIG_KEYS.KILL_ON_EXIT, defaultValue: DEFAULT_CONFIG.KILL_ON_EXIT },
       { oldKey: LEGACY_CONFIG_KEYS.LANGUAGE, newKey: CONFIG_KEYS.LANGUAGE, defaultValue: 'auto' },
+      { oldKey: LEGACY_CONFIG_KEYS.TERMINAL_STARTUP_DELAY, newKey: CONFIG_KEYS.TERMINAL_STARTUP_DELAY, defaultValue: DEFAULT_CONFIG.TERMINAL_STARTUP_DELAY },
     ];
 
     let migratedCount = 0;
@@ -90,6 +91,13 @@ export class ConfigurationService {
    */
   public getKillOnExit(): boolean {
     return this.getConfig(CONFIG_KEYS.KILL_ON_EXIT, DEFAULT_CONFIG.KILL_ON_EXIT);
+  }
+
+  /**
+   * 获取终端启动延迟（毫秒）
+   */
+  public getTerminalStartupDelay(): number {
+    return this.getConfig(CONFIG_KEYS.TERMINAL_STARTUP_DELAY, DEFAULT_CONFIG.TERMINAL_STARTUP_DELAY);
   }
 
   /**
