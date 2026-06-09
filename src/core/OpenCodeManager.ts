@@ -1040,7 +1040,7 @@ export class OpenCodeManager {
   /**
    * 获取工作区路径
    */
-  private getWorkspacePath(): string | undefined {
+  public getWorkspacePath(): string | undefined {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     return workspaceFolders && workspaceFolders.length > 0
       ? workspaceFolders[0].uri.fsPath

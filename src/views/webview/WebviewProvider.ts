@@ -11,6 +11,7 @@ import { getEventManager, OpenCodeEventManager } from '../../core/EventManager';
 import { EventType } from '../../core/eventTypes';
 import { OpenCodeStatus } from '../../core/types';
 import { l10n } from '../../l10n';
+import { encodePathForUrl } from '../../utils/pathUtils';
 
 /**
  * Webview 视图类型常量
@@ -495,10 +496,20 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
 
   /**
    * 获取 OpenCode URL
+   * 单工作区时编码路径为 URL-safe base64 追加到 URL
+   * 多工作区或没有工作区时不追加路径
    */
   private getOpenCodeUrl(): string {
     const port = this.configurationService.getPort();
-    return `http://localhost:${port}`;
+    const baseUrl = `http://localhost:${port}`;
+
+    const workspaceFolder = this.openCodeManager.getWorkspacePath();
+    if (workspaceFolder) {
+      const encodedPath = encodePathForUrl(workspaceFolder);
+      return `${baseUrl}/${encodedPath}/session`;
+    }
+
+    return baseUrl;
   }
 
   /**

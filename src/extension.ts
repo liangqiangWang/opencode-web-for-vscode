@@ -45,25 +45,25 @@ export function activate(context: vscode.ExtensionContext) {
   const manager = new OpenCodeManager(context);
   openCodeManager = manager;  // 保存引用
 
+  // 回调占位变量（避免 TypeScript 循环引用错误）
+  let onOpenInBrowser: () => void = () => {};
+  let onToggleSidebar: () => void = () => {};
+  let onOpenTui: () => void = () => {};
+
   // 创建 webview provider
   const webviewProvider = new OpencodeWebviewProvider(
     context,
     configService,
     manager,
-    () => {
-      // 在浏览器中打开回调
-      const port = configService.getPort();
-      vscode.env.openExternal(vscode.Uri.parse(`http://localhost:${port}`));
-    },
-    () => {
-      // 切换侧边栏回调
-      webviewProvider.toggleSidebar();
-    },
-    () => {
-      // 打开 TUI 回调
-      manager.showTui();
-    }
+    () => onOpenInBrowser(),
+    () => onToggleSidebar(),
+    () => onOpenTui()
   );
+
+  // 设置实际回调
+  onOpenInBrowser = () => webviewProvider.openInBrowser();
+  onToggleSidebar = () => webviewProvider.toggleSidebar();
+  onOpenTui = () => manager.showTui();
 
   // 注册 webview provider
   context.subscriptions.push(
