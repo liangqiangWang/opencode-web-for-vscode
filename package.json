@@ -241,7 +241,7 @@
       "editor/context": [
         {
           "command": "opencode-web.appendCode",
-          "when": "editorHasSelection",
+          "when": "editorFocus",
           "group": "opencode"
         }
       ]
