@@ -66,8 +66,12 @@ export function activate(context: vscode.ExtensionContext) {
   onOpenTui = () => manager.showTui();
 
   // 注册 webview provider
+  // retainContextWhenHidden：侧边栏隐藏时保留 webview 上下文（含 iframe），
+  // 避免每次切换视图都整页重建导致 OpenCode 界面重载
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider('opencodeWebview', webviewProvider)
+    vscode.window.registerWebviewViewProvider('opencodeWebview', webviewProvider, {
+      webviewOptions: { retainContextWhenHidden: true }
+    })
   );
 
   // 注册所有命令

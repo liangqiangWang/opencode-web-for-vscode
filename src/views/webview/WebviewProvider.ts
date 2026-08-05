@@ -12,6 +12,7 @@ import { EventType } from '../../core/eventTypes';
 import { OpenCodeStatus } from '../../core/types';
 import { l10n } from '../../l10n';
 import { encodePathForUrl } from '../../utils/pathUtils';
+import { STATE_EXPIRY_MS, INVALID_STATES } from './stateUtils';
 
 /**
  * Webview 视图类型常量
@@ -114,6 +115,41 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
       this.setState('error', l10n.t('message.initFailed', String(error)));
     } finally {
       this.isInitializing = false;
+    }
+  }
+
+  /**
+   * 处理 Webview 变为可见
+   * 已处于 ready 状态（iframe 正在显示）时，只做静默健康检查，
+   * 不发送 loading、不重建 iframe，避免每次切换侧边栏都重载 OpenCode 界面；
+   * 其他状态才执行完整初始化。
+   */
+  private async onWebviewVisible(): Promise<void> {
+    if (this.currentState === 'ready') {
+      await this.silentHealthCheck();
+      return;
+    }
+    await this.initializeWebview();
+  }
+
+  /**
+   * 静默健康检查
+   * 在 ready 状态下不打扰用户，仅确认服务是否仍可用：
+   * - 服务正常 → 保持 ready，iframe 原样保留（不重载）
+   * - 服务停止 → 切换为 idle，展示启动界面
+   */
+  private async silentHealthCheck(): Promise<void> {
+    try {
+      const connected = await this.openCodeManager.checkConnection(2000);
+      if (connected) {
+        this.log('静默健康检查成功：服务正常，保持 ready，不重载 iframe');
+      } else {
+        this.log('静默健康检查失败：服务已停止，切换为 idle');
+        this.currentState = 'idle';
+        this.setState('idle', l10n.t('status.notRunning'));
+      }
+    } catch (error) {
+      this.log(`静默健康检查出错: ${error}`);
     }
   }
 
@@ -249,7 +285,7 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
       if (webviewView.visible) {
         this.clearTimers('visibility');
         this.timers.visibility = setTimeout(() => {
-          this.initializeWebview();
+          this.onWebviewVisible();
         }, 300);
       }
     });
@@ -751,7 +787,9 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
 
     const vscode = acquireVsCodeApi();
     const SAVED_STATE_KEY = 'opencodeState';
-    const STATE_EXPIRY_MS = 300000; // 5分钟有效期
+    // 状态持久化常量由扩展端注入，与单元测试共享同一判断逻辑（stateUtils.ts）
+    const STATE_EXPIRY_MS = ${STATE_EXPIRY_MS}; // 5分钟有效期
+    const INVALID_STATES = ${JSON.stringify(INVALID_STATES)};
 
     // 保存状态到 vscode.persistence
     function saveState(state, message) {
@@ -782,8 +820,7 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
     function isStateValid(savedState) {
       if (!savedState) return false;
       const age = Date.now() - savedState.timestamp;
-      const invalidStates = ['error', 'notInstalled', 'loading', 'restarting'];
-      if (invalidStates.includes(savedState.state)) {
+      if (INVALID_STATES.includes(savedState.state)) {
         console.log('状态无效或为临时状态，需要重新检查:', savedState.state);
         return false;
       }
