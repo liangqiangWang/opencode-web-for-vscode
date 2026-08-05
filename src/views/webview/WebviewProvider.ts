@@ -12,6 +12,7 @@ import { EventType } from '../../core/eventTypes';
 import { OpenCodeStatus } from '../../core/types';
 import { l10n } from '../../l10n';
 import { encodePathForUrl } from '../../utils/pathUtils';
+import { STATE_EXPIRY_MS, INVALID_STATES } from './stateUtils';
 
 /**
  * Webview 视图类型常量
@@ -751,7 +752,9 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
 
     const vscode = acquireVsCodeApi();
     const SAVED_STATE_KEY = 'opencodeState';
-    const STATE_EXPIRY_MS = 300000; // 5分钟有效期
+    // 状态持久化常量由扩展端注入，与单元测试共享同一判断逻辑（stateUtils.ts）
+    const STATE_EXPIRY_MS = ${STATE_EXPIRY_MS}; // 5分钟有效期
+    const INVALID_STATES = ${JSON.stringify(INVALID_STATES)};
 
     // 保存状态到 vscode.persistence
     function saveState(state, message) {
@@ -782,8 +785,7 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
     function isStateValid(savedState) {
       if (!savedState) return false;
       const age = Date.now() - savedState.timestamp;
-      const invalidStates = ['error', 'notInstalled', 'loading', 'restarting'];
-      if (invalidStates.includes(savedState.state)) {
+      if (INVALID_STATES.includes(savedState.state)) {
         console.log('状态无效或为临时状态，需要重新检查:', savedState.state);
         return false;
       }

@@ -299,7 +299,8 @@
     "test-compile": "tsc -p ./",
     "test-watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
-    "test": "node ./out/test/runTest.js"
+    "compile:test": "tsc -p ./tsconfig.test.json",
+    "test": "npm run compile:test && node --test \"out/test/test/**/*.test.js\""
   },
   "devDependencies": {
     "@types/node": "14.x",
