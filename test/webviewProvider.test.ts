@@ -183,6 +183,88 @@ describe('initializeWebview - 初始化流程', () => {
   });
 });
 
+// === onWebviewVisible / silentHealthCheck：可见性处理 ===
+
+describe('onWebviewVisible - 可见性处理', () => {
+  test('已处于 ready 且服务正常 → 保持 ready，不发送 loading（不重载 iframe）', async () => {
+    const { webviewView, messages } = createWebviewView();
+    const provider = createProvider({ checkConnection: async () => true });
+    (provider as any).webviewView = webviewView;
+    (provider as any).currentState = 'ready';
+
+    await (provider as any).onWebviewVisible();
+
+    assert.equal(messages.length, 0, 'ready 且服务正常时不应发送任何消息');
+    assert.equal((provider as any).currentState, 'ready', '应保持 ready 状态');
+  });
+
+  test('已处于 ready 但服务已停止 → 切换到 idle，不经过 loading', async () => {
+    const { webviewView, messages } = createWebviewView();
+    const provider = createProvider({ checkConnection: async () => false });
+    (provider as any).webviewView = webviewView;
+    (provider as any).currentState = 'ready';
+
+    await (provider as any).onWebviewVisible();
+
+    const states = messages.map((m) => m.state);
+    assert.ok(!states.includes('loading'), '静默检查不应出现 loading 状态');
+    assert.equal(states[states.length - 1], 'idle', '服务停止后应切换为 idle');
+    assert.equal((provider as any).currentState, 'idle');
+  });
+
+  test('未处于 ready 状态 → 执行完整初始化（loading → 结果状态）', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const { webviewView, messages } = createWebviewView();
+    const provider = createProvider({ getStatus: async () => OpenCodeStatus.Running });
+    (provider as any).webviewView = webviewView;
+    (provider as any).currentState = 'idle';
+
+    await (provider as any).onWebviewVisible();
+
+    assert.equal(messages[0].state, 'loading', '非 ready 状态应先进入 loading');
+    assert.equal(messages[messages.length - 1].state, 'ready');
+    assert.equal((provider as any).currentState, 'ready');
+  });
+
+  test('silentHealthCheck 连接正常 → 不发任何消息', async () => {
+    const { webviewView, messages } = createWebviewView();
+    const provider = createProvider({ checkConnection: async () => true });
+    (provider as any).webviewView = webviewView;
+
+    await (provider as any).silentHealthCheck();
+
+    assert.equal(messages.length, 0);
+    assert.equal((provider as any).currentState, 'initializing', '不改变当前状态');
+  });
+
+  test('silentHealthCheck 连接失败 → 发送 idle 消息', async () => {
+    const { webviewView, messages } = createWebviewView();
+    const provider = createProvider({ checkConnection: async () => false });
+    (provider as any).webviewView = webviewView;
+
+    await (provider as any).silentHealthCheck();
+
+    assert.equal(messages[messages.length - 1].state, 'idle');
+    assert.equal((provider as any).currentState, 'idle');
+  });
+
+  test('silentHealthCheck 连接抛异常 → 保持当前状态，不抛错', async () => {
+    const { webviewView, messages } = createWebviewView();
+    const provider = createProvider({
+      checkConnection: async () => {
+        throw new Error('boom');
+      },
+    });
+    (provider as any).webviewView = webviewView;
+    (provider as any).currentState = 'ready';
+
+    await (provider as any).silentHealthCheck();
+
+    assert.equal(messages.length, 0, '异常时应静默忽略');
+    assert.equal((provider as any).currentState, 'ready', '异常时保持 ready');
+  });
+});
+
 // === startOpenCode + healthCheckPolling：启动流程 ===
 
 describe('startOpenCode - 启动流程状态切换', () => {

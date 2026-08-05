@@ -119,6 +119,41 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
   }
 
   /**
+   * 处理 Webview 变为可见
+   * 已处于 ready 状态（iframe 正在显示）时，只做静默健康检查，
+   * 不发送 loading、不重建 iframe，避免每次切换侧边栏都重载 OpenCode 界面；
+   * 其他状态才执行完整初始化。
+   */
+  private async onWebviewVisible(): Promise<void> {
+    if (this.currentState === 'ready') {
+      await this.silentHealthCheck();
+      return;
+    }
+    await this.initializeWebview();
+  }
+
+  /**
+   * 静默健康检查
+   * 在 ready 状态下不打扰用户，仅确认服务是否仍可用：
+   * - 服务正常 → 保持 ready，iframe 原样保留（不重载）
+   * - 服务停止 → 切换为 idle，展示启动界面
+   */
+  private async silentHealthCheck(): Promise<void> {
+    try {
+      const connected = await this.openCodeManager.checkConnection(2000);
+      if (connected) {
+        this.log('静默健康检查成功：服务正常，保持 ready，不重载 iframe');
+      } else {
+        this.log('静默健康检查失败：服务已停止，切换为 idle');
+        this.currentState = 'idle';
+        this.setState('idle', l10n.t('status.notRunning'));
+      }
+    } catch (error) {
+      this.log(`静默健康检查出错: ${error}`);
+    }
+  }
+
+  /**
    * 带超时和错误分类的状态检查
    */
   private async checkStatusWithTimeout(timeout: number): Promise<{
@@ -250,7 +285,7 @@ export class OpencodeWebviewProvider implements vscode.WebviewViewProvider, IWeb
       if (webviewView.visible) {
         this.clearTimers('visibility');
         this.timers.visibility = setTimeout(() => {
-          this.initializeWebview();
+          this.onWebviewVisible();
         }, 300);
       }
     });
