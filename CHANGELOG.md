@@ -2,7 +2,7 @@
 
 [中文版](CHANGELOG.zh-cn.md)
 
-## [0.1.5] - 2026-08-05
+## [0.1.6] - 2026-08-05
 ### Features
 - Unit test infrastructure using node:test + vscode mock (no new dependencies), 70 test cases covering Webview loading state transitions and judgment
 - Extracted `stateUtils` to share the Webview state persistence logic across extension, webview, and unit tests

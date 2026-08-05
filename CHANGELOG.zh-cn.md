@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1.5] - 2026-08-05
+## [0.1.6] - 2026-08-05
 ### 新增功能
 - 新增 node:test + vscode mock 单元测试基础设施（无新增依赖），覆盖 Webview 加载状态切换与判断，共 70 个用例
 - 抽取 stateUtils 共享 Webview 状态持久化判断逻辑，扩展端 / Webview 端 / 单测共用同一套判断标准
